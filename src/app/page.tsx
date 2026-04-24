@@ -1,65 +1,249 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import type { Trade, Account } from '@/lib/types'
+import { fmtPnl } from '@/lib/types'
+import TradeItem from '@/components/TradeItem'
+import EquityChart from '@/components/EquityChart'
+
+const ACCOUNT_ORDER = ['tradovate', 'bingx'] as const
+const ACCOUNT_LABEL: Record<string, string> = { tradovate: 'Prop Firm', bingx: 'Crypto' }
+
+function currentMonthStr() {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`
+}
+
+function fmtMonthLabel(ym: string) {
+  const [y, m] = ym.split('-')
+  return parseInt(y) !== new Date().getFullYear()
+    ? `${y}/${parseInt(m)}月`
+    : `${parseInt(m)}月`
+}
+
+export default function Dashboard() {
+  const [account, setAccount] = useState<'bingx' | 'tradovate'>('tradovate')
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [trades, setTrades] = useState<Trade[]>([])
+  const [allPnl, setAllPnl] = useState<Record<string, number>>({})
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthStr)
+
+  const current = accounts.find(a => a.name === account)
+  const riskAmount = current ? (current.initial_capital * current.risk_percent) / 100 : 0
+
+  // Derive available months from loaded trades
+  const availableMonths = [...new Set(trades.map(t => {
+    const d = new Date(t.entry_time ?? t.created_at)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  }))].sort().reverse()
+
+  const monthTrades = trades.filter(t => {
+    const d = new Date(t.entry_time ?? t.created_at)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === selectedMonth
+  })
+
+  const wins = monthTrades.filter(t => (t.pnl ?? 0) > 0)
+  const winRate = monthTrades.length ? Math.round((wins.length / monthTrades.length) * 100) : 0
+  const monthPnl = monthTrades.reduce((s, t) => s + (t.pnl ?? 0), 0)
+  const rrTrades = monthTrades.filter(t => t.rr_ratio)
+  const avgRR = rrTrades.length ? rrTrades.reduce((s, t) => s + (t.rr_ratio ?? 0), 0) / rrTrades.length : 0
+
+  useEffect(() => {
+    supabase.from('accounts').select('*').then(({ data }) => {
+      if (!data) return
+      setAccounts(data as Account[])
+      // Load total PnL for each account for the overview cards
+      data.forEach((acc: Account) => {
+        supabase.from('trades').select('pnl').eq('account_id', acc.id)
+          .then(({ data: td }) => {
+            const sum = td?.reduce((s, t) => s + (t.pnl ?? 0), 0) ?? 0
+            setAllPnl(prev => ({ ...prev, [acc.name]: sum }))
+          })
+      })
+    })
+  }, [])
+
+  useEffect(() => {
+    const acc = accounts.find(a => a.name === account)
+    if (!acc) return
+    setSelectedMonth(currentMonthStr())
+    supabase
+      .from('trades')
+      .select('*, strategies(name)')
+      .eq('account_id', acc.id)
+      .order('entry_time', { ascending: false })
+      .then(({ data }) => data && setTrades(data as Trade[]))
+  }, [account, accounts])
+
+  async function syncBingX() {
+    setSyncing(true)
+    setSyncMsg('')
+    const res = await fetch('/api/bingx-sync', { method: 'POST' })
+    const json = await res.json()
+    setSyncMsg(json.message ?? (res.ok ? '同步完成' : '同步失敗'))
+    setSyncing(false)
+    if (res.ok) {
+      const acc = accounts.find(a => a.name === 'bingx')
+      if (!acc) return
+      const { data } = await supabase
+        .from('trades')
+        .select('*, strategies(name)')
+        .eq('account_id', acc.id)
+        .order('entry_time', { ascending: false })
+      if (data) {
+        if (account === 'bingx') setTrades(data as Trade[])
+        const sum = data.reduce((s, t) => s + ((t as { pnl?: number }).pnl ?? 0), 0)
+        setAllPnl(prev => ({ ...prev, bingx: sum }))
+      }
+    }
+  }
+
+  const [y, m] = selectedMonth.split('-')
+  const monthDisplay = `${y}年${parseInt(m)}月`
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="px-4 py-5 md:px-8 md:py-7">
+      {/* Header */}
+      <div className="mb-5 flex items-baseline gap-3">
+        <h1 className="text-[17px] font-semibold">交易日誌</h1>
+        <p className="text-[11px]" style={{ color: 'var(--muted)' }}>{monthDisplay}</p>
+      </div>
+
+      {/* Account equity overview */}
+      {accounts.length > 0 && (
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {ACCOUNT_ORDER.map(name => accounts.find(a => a.name === name)).filter((a): a is Account => !!a).map(acc => {
+            const pnl = allPnl[acc.name] ?? 0
+            const equity = acc.initial_capital + pnl
+            const label = ACCOUNT_LABEL[acc.name] ?? acc.name
+            return (
+              <div key={acc.name} className="rounded-[10px] p-3 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+                <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: 'var(--muted)' }}>{label} · 帳戶資金</div>
+                <div className="text-[18px] font-semibold" style={{ color: pnl >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
+                  ${equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              </div>
+            )
+          })}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      )}
+
+      {/* Account tabs */}
+      <div className="flex gap-1.5 p-1 rounded-lg mb-3 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+        {ACCOUNT_ORDER.map(name => (
+          <button key={name} onClick={() => setAccount(name)}
+            className="flex-1 py-1.5 rounded-md text-[13px] transition-colors"
+            style={{ background: account === name ? 'var(--raised)' : 'transparent', color: account === name ? 'var(--text)' : 'var(--muted)' }}>
+            {ACCOUNT_LABEL[name]}
+          </button>
+        ))}
+      </div>
+
+      {/* Sync bar */}
+      {account === 'bingx' && (
+        <div className="flex justify-between items-center rounded-[10px] px-3.5 py-2.5 mb-3 border"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+          <div className="text-[12px]" style={{ color: 'var(--muted)' }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 mb-0.5" style={{ background: 'var(--profit)' }} />
+            {syncMsg || 'BingX 已連線'}
+          </div>
+          <button onClick={syncBingX} disabled={syncing}
+            className="text-[12px] px-3.5 py-1.5 rounded-[7px] font-medium disabled:opacity-50"
+            style={{ background: 'var(--accent)', color: '#08080d' }}>
+            {syncing ? '同步中...' : '↻ 同步'}
+          </button>
         </div>
-      </main>
+      )}
+
+      {/* Desktop: risk card + equity chart side by side */}
+      <div className="md:grid md:grid-cols-[300px_1fr] md:gap-4 md:items-start md:mb-4">
+        {/* Risk card */}
+        {current && (
+          <div className="rounded-[10px] p-4 mb-3 md:mb-0 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+            <div className="text-[10px] uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>風險管理</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg p-3 border" style={{ background: 'var(--raised)', borderColor: 'var(--border)' }}>
+                <div className="text-[10px] uppercase tracking-wide mb-2" style={{ color: 'var(--muted)' }}>
+                  {ACCOUNT_LABEL[account]}
+                </div>
+                <div className="text-[17px] font-semibold mb-2">${current.initial_capital.toLocaleString()}</div>
+                <div className="border-t pt-2" style={{ borderColor: 'var(--border)' }}>
+                  <div className="flex justify-between text-[11px] mb-1">
+                    <span style={{ color: 'var(--muted)' }}>風險比例</span>
+                    <span>{current.risk_percent}%</span>
+                  </div>
+                  <div className="flex justify-between text-[11px]">
+                    <span style={{ color: 'var(--muted)' }}>每筆可虧</span>
+                    <span className="text-[15px] font-semibold" style={{ color: '#f59e0b' }}>${riskAmount.toFixed(0)}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-rows-2 gap-2">
+                <div className="rounded-lg p-3 border" style={{ background: 'var(--raised)', borderColor: 'var(--border)' }}>
+                  <div className="text-[10px]" style={{ color: 'var(--muted)' }}>本月損益</div>
+                  <div className="text-[19px] font-semibold mt-1" style={{ color: monthPnl >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
+                    {fmtPnl(monthPnl)}
+                  </div>
+                </div>
+                <div className="rounded-lg p-3 border" style={{ background: 'var(--raised)', borderColor: 'var(--border)' }}>
+                  <div className="text-[10px]" style={{ color: 'var(--muted)' }}>勝率</div>
+                  <div className="text-[19px] font-semibold mt-1" style={{ color: 'var(--accent)' }}>
+                    {winRate}%
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Equity chart */}
+        <div className="rounded-[10px] p-4 mb-3 md:mb-0 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+          <div className="text-[10px] uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>資產走勢</div>
+          <EquityChart
+            trades={trades}
+            initialCapital={(current?.initial_capital ?? 10000) + (account === 'tradovate' ? (allPnl.bingx ?? 0) : 0)}
+          />
+        </div>
+      </div>
+
+      {/* Month trade list */}
+      <div className="flex justify-between items-center mb-2.5">
+        <span className="text-[10px] uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+          交易紀錄
+        </span>
+        <a href="/log" className="text-[12px]" style={{ color: 'var(--accent)' }}>全部 →</a>
+      </div>
+
+      {/* Month tabs */}
+      {availableMonths.length > 0 && (
+        <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+          {availableMonths.map(ym => (
+            <button key={ym} onClick={() => setSelectedMonth(ym)}
+              className="px-2.5 py-0.5 rounded-full text-[11px] whitespace-nowrap border transition-colors"
+              style={{
+                background: selectedMonth === ym ? 'var(--raised)' : 'transparent',
+                borderColor: selectedMonth === ym ? 'var(--border2)' : 'var(--border)',
+                color: selectedMonth === ym ? 'var(--text)' : 'var(--muted)',
+              }}>
+              {fmtMonthLabel(ym)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {monthTrades.length === 0 ? (
+        <div className="rounded-[10px] p-8 border text-center text-[13px]"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--muted)' }}>
+          {trades.length === 0
+            ? (account === 'bingx' ? '按「同步」載入 BingX 交易記錄' : '在設定頁上傳 CSV')
+            : `${fmtMonthLabel(selectedMonth)} 無交易紀錄`}
+        </div>
+      ) : (
+        monthTrades.map(t => <TradeItem key={t.id} trade={t} />)
+      )}
     </div>
-  );
+  )
 }
