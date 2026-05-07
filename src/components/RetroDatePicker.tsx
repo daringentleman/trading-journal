@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
 interface Props {
   value: string                // YYYY-MM-DD
@@ -36,14 +37,21 @@ function fmtDisplay(s: string): string {
 
 export default function RetroDatePicker({ value, onChange, min, max, className = '' }: Props) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
   const [view, setView] = useState(() => (value ? fromISO(value) : new Date()))
+  const [popupPos, setPopupPos] = useState<{ top: number; left: number } | null>(null)
 
-  // Close on outside click / escape
+  // Close on outside click / escape. Portal popup is outside wrapRef, so check
+  // popupRef separately.
   useEffect(() => {
     if (!open) return
     function clickOut(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const t = e.target as Node
+      if (wrapRef.current?.contains(t)) return
+      if (popupRef.current?.contains(t)) return
+      setOpen(false)
     }
     function esc(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false) }
     document.addEventListener('mousedown', clickOut)
@@ -51,6 +59,34 @@ export default function RetroDatePicker({ value, onChange, min, max, className =
     return () => {
       document.removeEventListener('mousedown', clickOut)
       document.removeEventListener('keydown', esc)
+    }
+  }, [open])
+
+  // Position the popup in viewport coords (escapes any overflow:hidden ancestor)
+  useEffect(() => {
+    if (!open || !triggerRef.current) return
+    const calc = () => {
+      const r = triggerRef.current!.getBoundingClientRect()
+      const popupW = 252
+      const popupH = 270
+      let left = r.left
+      let top = r.bottom + 8
+      // Flip horizontally if it would overflow the right edge
+      if (left + popupW > window.innerWidth - 8) {
+        left = Math.max(8, window.innerWidth - popupW - 8)
+      }
+      // Flip above the trigger if not enough room below
+      if (top + popupH > window.innerHeight - 8 && r.top - 8 - popupH > 8) {
+        top = r.top - 8 - popupH
+      }
+      setPopupPos({ top, left })
+    }
+    calc()
+    window.addEventListener('scroll', calc, true)
+    window.addEventListener('resize', calc)
+    return () => {
+      window.removeEventListener('scroll', calc, true)
+      window.removeEventListener('resize', calc)
     }
   }, [open])
 
@@ -94,9 +130,59 @@ export default function RetroDatePicker({ value, onChange, min, max, className =
     setOpen(false)
   }
 
+  const popup = open && popupPos && typeof document !== 'undefined' ? createPortal(
+    <div ref={popupRef}
+      className="p-3 retro-card"
+      style={{
+        position: 'fixed',
+        top: popupPos.top,
+        left: popupPos.left,
+        width: 252,
+        zIndex: 9999,
+        boxShadow: '3px 3px 0 var(--border)',
+      }}>
+      <div className="flex items-center justify-between mb-2 gap-2">
+        <button type="button" onClick={() => setView(new Date(year, month - 1, 1))}
+          className="w-7 h-7 flex items-center justify-center retro-pill fs-meta">‹</button>
+        <span className="retro-display fs-body font-bold flex-1 text-center" style={{ color: '#000' }}>
+          {year} · {MONTH_NAMES[month]}
+        </span>
+        <button type="button" onClick={() => setView(new Date(year, month + 1, 1))}
+          className="w-7 h-7 flex items-center justify-center retro-pill fs-meta">›</button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-0.5 mb-1">
+        {WEEK_DAYS.map(d => (
+          <div key={d} className="text-center fs-tiny font-bold py-1" style={{ color: 'var(--muted)' }}>{d}</div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-0.5">
+        {cells.map(({ date, inMonth }, i) => {
+          const iso = toISO(date)
+          const selected = iso === value
+          const today = iso === todayIso
+          const disabled = isDisabled(date)
+          return (
+            <button key={i} type="button" disabled={disabled}
+              onClick={() => pick(date)}
+              className="retro-day-cell fs-tiny font-bold py-1.5"
+              data-selected={selected || undefined}
+              data-today={today || undefined}
+              data-out={!inMonth || undefined}
+              data-disabled={disabled || undefined}>
+              {date.getDate()}
+            </button>
+          )
+        })}
+      </div>
+    </div>,
+    document.body,
+  ) : null
+
   return (
-    <div ref={ref} className={`relative inline-block ${className}`}>
-      <button type="button" onClick={() => setOpen(o => !o)}
+    <div ref={wrapRef} className={`inline-block ${className}`}>
+      <button ref={triggerRef} type="button" onClick={() => setOpen(o => !o)}
         className="px-2 py-1 outline-none cursor-pointer fs-meta font-bold"
         style={{
           background: 'var(--surface)',
@@ -108,47 +194,7 @@ export default function RetroDatePicker({ value, onChange, min, max, className =
         }}>
         {fmtDisplay(value)}
       </button>
-
-      {open && (
-        <div className="absolute z-50 mt-2 p-3 retro-card"
-          style={{ minWidth: 252, boxShadow: '3px 3px 0 var(--border)' }}>
-          <div className="flex items-center justify-between mb-2 gap-2">
-            <button type="button" onClick={() => setView(new Date(year, month - 1, 1))}
-              className="w-7 h-7 flex items-center justify-center retro-pill fs-meta">‹</button>
-            <span className="retro-display fs-body font-bold flex-1 text-center" style={{ color: '#000' }}>
-              {year} · {MONTH_NAMES[month]}
-            </span>
-            <button type="button" onClick={() => setView(new Date(year, month + 1, 1))}
-              className="w-7 h-7 flex items-center justify-center retro-pill fs-meta">›</button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-0.5 mb-1">
-            {WEEK_DAYS.map(d => (
-              <div key={d} className="text-center fs-tiny font-bold py-1" style={{ color: 'var(--muted)' }}>{d}</div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-0.5">
-            {cells.map(({ date, inMonth }, i) => {
-              const iso = toISO(date)
-              const selected = iso === value
-              const today = iso === todayIso
-              const disabled = isDisabled(date)
-              return (
-                <button key={i} type="button" disabled={disabled}
-                  onClick={() => pick(date)}
-                  className="retro-day-cell fs-tiny font-bold py-1.5"
-                  data-selected={selected || undefined}
-                  data-today={today || undefined}
-                  data-out={!inMonth || undefined}
-                  data-disabled={disabled || undefined}>
-                  {date.getDate()}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      {popup}
     </div>
   )
 }

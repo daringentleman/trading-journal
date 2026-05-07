@@ -261,7 +261,7 @@ export default function Dashboard() {
         <span className="text-[10px] uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
           交易紀錄
         </span>
-        <a href="/log" className="text-[12px]" style={{ color: 'var(--accent)' }}>全部 →</a>
+        <a href="/log" className="text-[12px] font-bold" style={{ color: '#000' }}>全部 →</a>
       </div>
 
       {/* Month tabs */}
