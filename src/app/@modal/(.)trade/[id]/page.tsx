@@ -22,12 +22,12 @@ export default function TradeModalPage({ params }: { params: Promise<{ id: strin
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto p-4 md:p-8"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8"
       style={{ background: 'rgba(26, 20, 16, 0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
       onClick={() => router.back()}
     >
       <div
-        className="retro-card w-full max-w-2xl my-auto p-5 md:p-6 relative"
+        className="retro-card w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5 md:p-6 relative"
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

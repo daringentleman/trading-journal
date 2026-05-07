@@ -65,8 +65,8 @@ body::after {
   opacity: 0.55;
 }
 
-/* Anything inside body sits above grain */
-body > * { position: relative; z-index: 1; }
+/* App content sits above grain layer (modal handles its own stacking) */
+body > div.flex { position: relative; z-index: 1; }
 
 /* scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
