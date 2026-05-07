@@ -153,12 +153,8 @@ export default function EquityChart({ trades, initialCapital }: Props) {
       <div className="flex gap-1.5 mb-3">
         {RANGES.map(r => (
           <button key={r.key} onClick={() => { setRange(r.key); setHoverIdx(null) }}
-            className="px-2.5 py-0.5 rounded-full text-[11px] border transition-colors"
-            style={{
-              background: range === r.key ? 'var(--raised)' : 'transparent',
-              borderColor: range === r.key ? 'var(--border2)' : 'var(--border)',
-              color: range === r.key ? 'var(--text)' : 'var(--muted)',
-            }}>
+            data-active={range === r.key}
+            className="retro-pill px-3 py-1 fs-meta transition-colors">
             {r.label}
           </button>
         ))}
@@ -180,8 +176,8 @@ export default function EquityChart({ trades, initialCapital }: Props) {
           >
             <defs>
               <linearGradient id="eq-grad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={chartContent.isUp ? '#16a34a' : '#b91c1c'} stopOpacity="0.18" />
-                <stop offset="100%" stopColor={chartContent.isUp ? '#16a34a' : '#b91c1c'} stopOpacity="0" />
+                <stop offset="0%" stopColor={chartContent.isUp ? 'var(--profit)' : 'var(--loss)'} stopOpacity="0.18" />
+                <stop offset="100%" stopColor={chartContent.isUp ? 'var(--profit)' : 'var(--loss)'} stopOpacity="0" />
               </linearGradient>
               <clipPath id="chart-clip">
                 <rect x={ML} y={PT} width={CW} height={CH} />
@@ -231,10 +227,10 @@ export default function EquityChart({ trades, initialCapital }: Props) {
               return (
                 <>
                   <circle cx={ex} cy={ey} r="3" fill={color} />
-                  <rect x={ex - 52} y={above ? ey + 4 : ey - 14} width={50} height={11} rx="2"
-                    fill="var(--surface)" fillOpacity="0.85" />
-                  <text x={ex - 2} y={above ? ey + 12 : ey - 5}
-                    textAnchor="end" fontSize="8.5" fill={color}>
+                  <rect x={ex - 52} y={above ? ey + 4 : ey - 12} width={50} height={10} rx="2"
+                    fill="var(--surface)" fillOpacity="0.9" />
+                  <text x={ex - 2} y={above ? ey + 11 : ey - 4}
+                    textAnchor="end" fontSize="7" fill={color}>
                     {fmtAxis(lastEquity)}
                   </text>
                 </>
@@ -256,14 +252,14 @@ export default function EquityChart({ trades, initialCapital }: Props) {
                   ? 'translateX(calc(-100% - 20px))' : undefined,
               }}
             >
-              <div className="text-[10px] mb-0.5" style={{ color: 'var(--muted)' }}>
+              <div className="fs-tiny mb-0.5" style={{ color: 'var(--muted)' }}>
                 {fmtDay(hp.day)}
               </div>
-              <div className="text-[12px] font-semibold" style={{ color: chartContent.color }}>
+              <div className="fs-body retro-mono font-bold" style={{ color: chartContent.color }}>
                 {fmtAxis(hp.equity)}
               </div>
               {hp.delta !== 0 && (
-                <div className="text-[10px] mt-0.5 font-medium" style={{ color: hpColor }}>
+                <div className="fs-tiny mt-0.5 font-medium" style={{ color: hpColor }}>
                   {fmtDelta(hp.delta)}
                 </div>
               )}
