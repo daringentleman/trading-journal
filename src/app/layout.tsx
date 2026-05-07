@@ -12,7 +12,13 @@ export const metadata: Metadata = {
   description: '日內交易記錄與分析',
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+  modal,
+}: {
+  children: React.ReactNode
+  modal: React.ReactNode
+}) {
   return (
     <html lang="zh-TW" className={`${archivoBlack.variable} ${inter.variable} ${spaceMono.variable}`}>
       <body className="min-h-screen" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
@@ -22,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {children}
           </main>
         </div>
+        {modal}
       </body>
     </html>
   )
