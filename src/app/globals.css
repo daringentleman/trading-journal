@@ -89,15 +89,11 @@ body > * { position: relative; z-index: 1; }
 /* Mono numerals (price / pnl tabular alignment) */
 .retro-mono { font-family: var(--font-mono), 'Space Mono', monospace; }
 
-/* Letterpress / distressed ink — masks chunks of text to fake faded printing.
-   Use sparingly: best on big display headlines (small body text gets unreadable). */
+/* Offset-print echo — 70s newspaper misregistration look.
+   Main type stays solid dark; an orange-red echo sits 2-3px behind. */
 .retro-distressed {
-  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='m'><feTurbulence type='fractalNoise' baseFrequency='2.4' numOctaves='2' seed='9' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1.7 -0.55'/></filter><rect width='100%25' height='100%25' filter='url(%23m)'/></svg>");
-          mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='m'><feTurbulence type='fractalNoise' baseFrequency='2.4' numOctaves='2' seed='9' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1.7 -0.55'/></filter><rect width='100%25' height='100%25' filter='url(%23m)'/></svg>");
-  -webkit-mask-mode: alpha;
-          mask-mode: alpha;
-  -webkit-mask-repeat: repeat;
-          mask-repeat: repeat;
+  text-shadow:
+    3px 3px 0 var(--accent2);
 }
 
 /* Newspaper-style thick-bordered card */
