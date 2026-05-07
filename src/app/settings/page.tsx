@@ -83,39 +83,39 @@ export default function SettingsPage() {
   const bingxAcc = accounts.find(a => a.name === 'bingx')
   const tvAcc = accounts.find(a => a.name === 'tradovate')
 
-  function StrategyCard({ accName }: { accName: 'bingx' | 'tradovate' }) {
-    return (
-      <div className="rounded-[10px] p-4 mb-3 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-        <div className="text-[10px] uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>策略標籤</div>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {strategies[accName].map(s => (
-            <div key={s.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[12px]"
-              style={{ background: 'var(--raised)', borderColor: 'var(--border)' }}>
-              {s.name}
-              <button onClick={() => removeStrategy(accName, s.id)}
-                className="transition-colors hover:text-[var(--loss)]"
-                style={{ color: 'var(--muted2)', lineHeight: 1, fontSize: '15px' }}>×</button>
-            </div>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          <input
-            value={newLabel[accName] ?? ''}
-            onChange={e => setNewLabel(p => ({ ...p, [accName]: e.target.value }))}
-            onKeyDown={e => e.key === 'Enter' && addStrategy(accName)}
-            placeholder="新增策略名稱..."
-            className="flex-1 rounded-lg px-3 py-2 text-[13px] border outline-none"
-            style={{ background: 'var(--raised)', borderColor: 'var(--border2)', color: 'var(--text)' }}
-          />
-          <button onClick={() => addStrategy(accName)}
-            className="px-4 py-2 rounded-lg text-[13px] font-medium"
-            style={{ background: 'var(--accent)', color: '#08080d' }}>+</button>
-        </div>
+  const renderStrategyCard = (accName: 'bingx' | 'tradovate') => (
+    <div className="rounded-[10px] p-4 mb-3 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+      <div className="text-[10px] uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>策略標籤</div>
+      <div className="flex flex-wrap gap-2 mb-3">
+        {strategies[accName].map(s => (
+          <div key={s.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[12px]"
+            style={{ background: 'var(--raised)', borderColor: 'var(--border)' }}>
+            {s.name}
+            <button onClick={() => removeStrategy(accName, s.id)}
+              className="transition-colors hover:text-[var(--loss)]"
+              style={{ color: 'var(--muted2)', lineHeight: 1, fontSize: '15px' }}>×</button>
+          </div>
+        ))}
       </div>
-    )
-  }
+      <div className="flex gap-2">
+        <input
+          value={newLabel[accName] ?? ''}
+          onChange={e => setNewLabel(p => ({ ...p, [accName]: e.target.value }))}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) addStrategy(accName)
+          }}
+          placeholder="新增策略名稱..."
+          className="flex-1 rounded-lg px-3 py-2 text-[13px] border outline-none"
+          style={{ background: 'var(--raised)', borderColor: 'var(--border2)', color: 'var(--text)' }}
+        />
+        <button onClick={() => addStrategy(accName)}
+          className="px-4 py-2 rounded-lg text-[13px] font-medium"
+          style={{ background: 'var(--accent)', color: '#08080d' }}>+</button>
+      </div>
+    </div>
+  )
 
-  function CapitalCard({ acc }: { acc: Account }) {
+  const renderCapitalCard = (acc: Account) => {
     const riskAmt = (acc.initial_capital * acc.risk_percent) / 100
     return (
       <div className="rounded-[10px] p-4 mb-3 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
@@ -190,8 +190,8 @@ export default function SettingsPage() {
             </label>
           </div>
 
-          <StrategyCard accName="bingx" />
-          {bingxAcc && <CapitalCard acc={bingxAcc} />}
+          {renderStrategyCard('bingx')}
+          {bingxAcc && renderCapitalCard(bingxAcc)}
         </div>
 
         {/* Tradovate column */}
@@ -210,8 +210,8 @@ export default function SettingsPage() {
             </label>
           </div>
 
-          <StrategyCard accName="tradovate" />
-          {tvAcc && <CapitalCard acc={tvAcc} />}
+          {renderStrategyCard('tradovate')}
+          {tvAcc && renderCapitalCard(tvAcc)}
         </div>
       </div>
     </div>

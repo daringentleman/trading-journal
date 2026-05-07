@@ -3,192 +3,260 @@
 import { useState, useRef } from 'react'
 import type { StrategyMetric } from '@/lib/strategy-stats'
 
+export type ChartMode = 'pnl' | 'winRate'
+
 interface Props {
-  metrics: StrategyMetric[]   // already filtered to range and to strategies with trades
-  rangeStartMs: number        // for X-axis anchor
+  metric: StrategyMetric | null
+  rangeStartMs: number
+  mode?: ChartMode
 }
 
-function fmtTime(ms: number): string {
+function fmtPnlAxis(n: number): string {
+  return (n >= 0 ? '+$' : '-$') + Math.abs(Math.round(n)).toLocaleString('en-US')
+}
+
+function fmtPctAxis(n: number): string {
+  return Math.round(n) + '%'
+}
+
+function fmtDay(ms: number): string {
   const d = new Date(ms)
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
-function fmtMoney(n: number): string {
-  return (n >= 0 ? '+$' : '-$') + Math.abs(n).toFixed(0)
+function fmtPnlDelta(delta: number): string {
+  if (delta === 0) return ''
+  return (delta > 0 ? '+' : '') + '$' + delta.toFixed(1)
 }
 
-export default function StrategyEquityChart({ metrics, rangeStartMs }: Props) {
-  const [hoverX, setHoverX] = useState<number | null>(null)
+function fmtPctDelta(delta: number): string {
+  if (Math.abs(delta) < 0.05) return ''
+  return (delta > 0 ? '+' : '') + delta.toFixed(1) + '%'
+}
+
+function smoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return ''
+  if (pts.length === 2) return `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)} L${pts[1].x.toFixed(2)},${pts[1].y.toFixed(2)}`
+  const t = 6
+  let d = `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)}`
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)]
+    const p1 = pts[i]
+    const p2 = pts[i + 1]
+    const p3 = pts[Math.min(pts.length - 1, i + 2)]
+    let c1x = p1.x + (p2.x - p0.x) / t
+    const c1y = p1.y + (p2.y - p0.y) / t
+    let c2x = p2.x - (p3.x - p1.x) / t
+    const c2y = p2.y - (p3.y - p1.y) / t
+    // Clamp control points' X to the current segment so the curve never
+    // folds back on itself when X spacing is uneven (e.g. trade-day clusters
+    // followed by a long flat tail to "now").
+    if (c1x < p1.x) c1x = p1.x
+    if (c1x > p2.x) c1x = p2.x
+    if (c2x < p1.x) c2x = p1.x
+    if (c2x > p2.x) c2x = p2.x
+    d += ` C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`
+  }
+  return d
+}
+
+export default function StrategyEquityChart({ metric, rangeStartMs, mode = 'pnl' }: Props) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
-  const ML = 46, MB = 18, PT = 6, CW = 330, CH = 130
+  const ML = 46, MB = 20, PT = 8, CW = 330, CH = 130
   const TW = ML + CW
   const TH = PT + CH + MB
 
-  const usable = metrics.filter(m => m.equityCurve.length >= 2)
-  if (!usable.length) {
+  const sourceCurve: { time: number; value: number }[] = metric
+    ? (mode === 'pnl'
+        ? metric.equityCurve.map(p => ({ time: p.time, value: p.equity }))
+        : metric.winRateCurve.map(p => ({ time: p.time, value: p.winRate })))
+    : []
+
+  if (!metric || sourceCurve.length < 2) {
     return (
       <div className="h-[160px] flex items-center justify-center text-[12px]" style={{ color: 'var(--muted)' }}>
-        此時間範圍內無策略資料
+        此時間範圍內無交易記錄
       </div>
     )
   }
 
-  // Build aligned series: each strategy gets [(rangeStartMs, 0), ...trades]
-  const series = usable.map(m => ({
-    metric: m,
-    points: [{ time: rangeStartMs, equity: 0 }, ...m.equityCurve.slice(1)],
-  }))
+  // Aggregate per day: keep last value of each calendar day
+  const nowMs = Date.now()
+  const byDay = new Map<string, number>()
+  for (const p of sourceCurve.slice(1)) {
+    const k = new Date(p.time).toLocaleDateString('en-CA')
+    byDay.set(k, p.value)
+  }
+  const sortedKeys = [...byDay.keys()].sort()
 
-  const allEquities = series.flatMap(s => s.points.map(p => p.equity))
-  allEquities.push(0)
-  const dataMin = Math.min(...allEquities)
-  const dataMax = Math.max(...allEquities)
-  const pad = Math.max((dataMax - dataMin) * 0.15, 5)
-  const minE = dataMin - pad
-  const maxE = dataMax + pad
-  const rngE = maxE - minE || 1
+  // Per-day delta from previous day
+  const points: { time: number; value: number; delta: number }[] = [
+    { time: rangeStartMs, value: mode === 'pnl' ? 0 : 0, delta: 0 },
+  ]
+  let prev = mode === 'pnl' ? 0 : 0
+  for (const k of sortedKeys) {
+    const v = byDay.get(k)!
+    const [y, m, d] = k.split('-').map(Number)
+    points.push({
+      time: new Date(y, m - 1, d, 23, 59).getTime(),
+      value: v,
+      delta: v - prev,
+    })
+    prev = v
+  }
+  const lastVal = points[points.length - 1].value
+  if (points[points.length - 1].time < nowMs) {
+    points.push({ time: nowMs, value: lastVal, delta: 0 })
+  }
 
-  const allTimes = series.flatMap(s => s.points.map(p => p.time))
+  const allValues = points.map(p => p.value)
+  let minV: number, maxV: number
+  if (mode === 'winRate') {
+    // Lock the win rate axis to 0..100 so drift around 50% reads consistently
+    minV = 0
+    maxV = 100
+  } else {
+    const dataMin = Math.min(0, ...allValues)
+    const dataMax = Math.max(0, ...allValues)
+    const pad = Math.max((dataMax - dataMin) * 0.18, 5)
+    minV = dataMin - pad
+    maxV = dataMax + pad
+  }
+  const rng = maxV - minV || 1
+
   const minT = rangeStartMs
-  const maxT = Math.max(Date.now(), ...allTimes)
+  const maxT = Math.max(nowMs, ...points.map(p => p.time))
   const rngT = maxT - minT || 1
 
   const toX = (t: number) => ML + ((t - minT) / rngT) * CW
-  const toY = (e: number) => PT + CH - ((e - minE) / rngE) * (CH - 8) - 4
+  const toY = (v: number) => PT + CH - ((v - minV) / rng) * (CH - 8) - 4
 
-  const yTicks = [0, 1, 2, 3].map(i => minE + (rngE / 3) * i)
+  const yTicks = mode === 'winRate'
+    ? [0, 25, 50, 75, 100]
+    : [0, 1, 2, 3].map(i => minV + (rng / 3) * i)
   const xTickCount = 5
   const xTicks = Array.from({ length: xTickCount }, (_, i) => minT + (rngT * i) / (xTickCount - 1))
 
-  // Build polylines per strategy. Step the line so it stays flat between trade events.
-  function buildPath(points: { time: number; equity: number }[]): string {
-    const sorted = [...points].sort((a, b) => a.time - b.time)
-    const segs: string[] = []
-    for (let i = 0; i < sorted.length; i++) {
-      const p = sorted[i]
-      if (i === 0) segs.push(`M${toX(p.time).toFixed(1)},${toY(p.equity).toFixed(1)}`)
-      else {
-        const prev = sorted[i - 1]
-        // step: horizontal at prev.equity until p.time, then jump to p.equity
-        segs.push(`L${toX(p.time).toFixed(1)},${toY(prev.equity).toFixed(1)}`)
-        segs.push(`L${toX(p.time).toFixed(1)},${toY(p.equity).toFixed(1)}`)
-      }
-    }
-    // extend to maxT at last equity (so all lines reach the right edge)
-    const last = sorted[sorted.length - 1]
-    if (last.time < maxT) {
-      segs.push(`L${toX(maxT).toFixed(1)},${toY(last.equity).toFixed(1)}`)
-    }
-    return segs.join(' ')
-  }
+  const xy = points.map(p => ({ x: toX(p.time), y: toY(p.value) }))
+  const linePath = smoothPath(xy)
 
-  // Hover: find equity per series at hoverX time
-  function equityAt(points: { time: number; equity: number }[], time: number): number {
-    const sorted = [...points].sort((a, b) => a.time - b.time)
-    let cur = 0
-    for (const p of sorted) {
-      if (p.time <= time) cur = p.equity
-      else break
-    }
-    return cur
-  }
+  const lineColor = metric.color
+  const clipId = `strat-clip-${metric.id}-${mode}`
 
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
     const rect = e.currentTarget.getBoundingClientRect()
     const svgX = ((e.clientX - rect.left) / rect.width) * TW
-    const t = minT + ((svgX - ML) / CW) * rngT
-    setHoverX(Math.max(minT, Math.min(maxT, t)))
+    let best = 0, bestDist = Infinity
+    for (let i = 0; i < points.length; i++) {
+      const d = Math.abs(toX(points[i].time) - svgX)
+      if (d < bestDist) { bestDist = d; best = i }
+    }
+    setHoverIdx(best)
     const wRect = wrapperRef.current?.getBoundingClientRect()
     if (wRect) setTooltipPos({ x: e.clientX - wRect.left, y: e.clientY - wRect.top })
   }
 
-  const hoverPxX = hoverX !== null ? toX(hoverX) : 0
+  const hp = hoverIdx !== null ? points[hoverIdx] : null
+  const hx = hp ? toX(hp.time) : 0
+  const hy = hp ? toY(hp.value) : 0
+  const hpDeltaColor = hp
+    ? hp.delta > 0 ? 'var(--profit)' : hp.delta < 0 ? 'var(--loss)' : 'var(--muted)'
+    : 'var(--muted)'
+
+  const fmtAxis = mode === 'pnl' ? fmtPnlAxis : fmtPctAxis
+  const fmtDelta = mode === 'pnl' ? fmtPnlDelta : fmtPctDelta
+  const valueColor = mode === 'pnl'
+    ? (hp && hp.value >= 0 ? 'var(--profit)' : 'var(--loss)')
+    : (hp && hp.value >= 50 ? 'var(--profit)' : 'var(--loss)')
 
   return (
-    <div ref={wrapperRef} className="relative w-full">
+    <div ref={wrapperRef} className="relative w-full max-w-[640px] mx-auto">
       <svg
         width="100%"
         viewBox={`0 0 ${TW} ${TH}`}
         preserveAspectRatio="none"
         style={{ display: 'block' }}
         onMouseMove={handleMouseMove}
-        onMouseLeave={() => setHoverX(null)}
+        onMouseLeave={() => setHoverIdx(null)}
       >
-        {/* Y ticks */}
+        <defs>
+          <clipPath id={clipId}>
+            <rect x={ML} y={PT} width={CW} height={CH} />
+          </clipPath>
+        </defs>
+
+        {/* Y gridlines + labels */}
         {yTicks.map((v, i) => {
           const y = toY(v)
           return (
             <g key={i}>
-              <line x1={ML} y1={y} x2={ML + CW} y2={y} stroke="var(--border)" strokeWidth="0.5" />
+              <line x1={ML} y1={y} x2={ML + CW} y2={y} stroke="var(--border)" strokeWidth="0.5" opacity="0.5" />
               <text x={ML - 3} y={y + 3} textAnchor="end" fontSize="7" fill="var(--muted)">
-                {(v >= 0 ? '+' : '') + '$' + Math.round(v)}
+                {fmtAxis(v)}
               </text>
             </g>
           )
         })}
 
-        {/* Zero line */}
-        {minE < 0 && maxE > 0 && (
-          <line x1={ML} y1={toY(0)} x2={ML + CW} y2={toY(0)} stroke="var(--muted)" strokeWidth="0.5" strokeDasharray="2,2" opacity="0.5" />
+        {/* Mid baseline (zero PnL or 50% win rate) */}
+        {mode === 'pnl' && minV < 0 && maxV > 0 && (
+          <line x1={ML} y1={toY(0)} x2={ML + CW} y2={toY(0)}
+            stroke="var(--border)" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.7" />
+        )}
+        {mode === 'winRate' && (
+          <line x1={ML} y1={toY(50)} x2={ML + CW} y2={toY(50)}
+            stroke="var(--border)" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.7" />
         )}
 
-        {/* X ticks */}
+        {/* X labels */}
         {xTicks.map((t, i) => (
           <text key={i} x={toX(t)} y={TH - 3} textAnchor="middle" fontSize="7" fill="var(--muted)">
-            {fmtTime(t)}
+            {fmtDay(t)}
           </text>
         ))}
 
-        {/* Strategy lines */}
-        {series.map(s => (
-          <path key={s.metric.id} d={buildPath(s.points)} fill="none"
-            stroke={s.metric.color} strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
-        ))}
+        {/* Line only — no fill (clean, no shadow under the curve) */}
+        <path d={linePath} fill="none" stroke={lineColor}
+          strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" clipPath={`url(#${clipId})`} />
 
-        {/* Hover guide */}
-        {hoverX !== null && (
-          <line x1={hoverPxX} y1={PT} x2={hoverPxX} y2={PT + CH}
-            stroke="var(--border2)" strokeWidth="0.8" strokeDasharray="3,2" />
+        {/* Hover crosshair + dot */}
+        {hp && (
+          <>
+            <line x1={hx} y1={PT} x2={hx} y2={PT + CH}
+              stroke="var(--border2)" strokeWidth="0.8" strokeDasharray="3,2" />
+            <circle cx={hx} cy={hy} r="3.5" fill={lineColor} stroke="var(--surface)" strokeWidth="1.5" />
+          </>
         )}
-
-        {/* Hover dots */}
-        {hoverX !== null && series.map(s => {
-          const eq = equityAt(s.points, hoverX)
-          return <circle key={s.metric.id} cx={hoverPxX} cy={toY(eq)} r="2.2" fill={s.metric.color} />
-        })}
       </svg>
 
       {/* Tooltip */}
-      {hoverX !== null && (
+      {hp && (
         <div
-          className="pointer-events-none absolute rounded-lg px-2.5 py-2 border"
+          className="pointer-events-none absolute rounded-lg px-2.5 py-2 border text-center"
           style={{
             background: 'var(--raised)',
             borderColor: 'var(--border2)',
             left: tooltipPos.x + 12,
-            top: tooltipPos.y - 8,
-            minWidth: 130,
-            transform: tooltipPos.x > (wrapperRef.current?.clientWidth ?? 999) * 0.65
+            top: tooltipPos.y - 50,
+            minWidth: 90,
+            transform: tooltipPos.x > (wrapperRef.current?.clientWidth ?? 999) * 0.7
               ? 'translateX(calc(-100% - 24px))' : undefined,
           }}
         >
-          <div className="text-[10px] mb-1.5" style={{ color: 'var(--muted)' }}>{fmtTime(hoverX)}</div>
-          <div className="space-y-0.5">
-            {series
-              .map(s => ({ s, eq: equityAt(s.points, hoverX) }))
-              .sort((a, b) => b.eq - a.eq)
-              .map(({ s, eq }) => (
-                <div key={s.metric.id} className="flex items-center gap-2 text-[11px]">
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.metric.color }} />
-                  <span className="flex-1 truncate" style={{ color: 'var(--text)' }}>{s.metric.name}</span>
-                  <span className="font-medium tabular-nums" style={{ color: eq >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
-                    {fmtMoney(eq)}
-                  </span>
-                </div>
-              ))}
+          <div className="fs-tiny mb-0.5" style={{ color: 'var(--muted)' }}>
+            {fmtDay(hp.time)}
           </div>
+          <div className="fs-body retro-mono font-bold" style={{ color: valueColor }}>
+            {fmtAxis(hp.value)}
+          </div>
+          {hp.delta !== 0 && fmtDelta(hp.delta) && (
+            <div className="fs-tiny mt-0.5 font-medium" style={{ color: hpDeltaColor }}>
+              {fmtDelta(hp.delta)}
+            </div>
+          )}
         </div>
       )}
     </div>

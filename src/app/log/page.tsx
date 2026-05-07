@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Trade, Account, Strategy } from '@/lib/types'
+import { tradeCache } from '@/lib/trade-cache'
 import TradeItem from '@/components/TradeItem'
 
 const ACCOUNT_ORDER = ['tradovate', 'bingx'] as const
@@ -78,7 +79,11 @@ export default function LogPage() {
   }, [account, selectedMonth, filter, sort, restored])
 
   useEffect(() => {
-    supabase.from('accounts').select('*').then(({ data }) => data && setAccounts(data as Account[]))
+    supabase.from('accounts').select('*').then(({ data }) => {
+      if (!data) return
+      setAccounts(data as Account[])
+      tradeCache.setAccounts(data as Account[])
+    })
   }, [])
 
   useEffect(() => {
@@ -86,11 +91,19 @@ export default function LogPage() {
     if (!acc) return
     setShowForm(false)
     supabase.from('strategies').select('*').eq('account_id', acc.id).order('sort_order')
-      .then(({ data }) => data && setStrategies(data as Strategy[]))
+      .then(({ data }) => {
+        if (!data) return
+        setStrategies(data as Strategy[])
+        tradeCache.setStrategies(acc.id, data as Strategy[])
+      })
     supabase.from('trades').select('*, strategies(name)')
       .eq('account_id', acc.id)
       .order('entry_time', { ascending: false })
-      .then(({ data }) => data && setTrades(data as Trade[]))
+      .then(({ data }) => {
+        if (!data) return
+        setTrades(data as Trade[])
+        tradeCache.setMany(data as Trade[])
+      })
   }, [account, accounts])
 
   // Derive available months from all trades

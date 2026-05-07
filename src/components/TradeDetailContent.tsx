@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { Trade, Strategy, Account } from '@/lib/types'
 import { durationLabel, fmtPrice, fmtPnl } from '@/lib/types'
+import { tradeCache } from '@/lib/trade-cache'
 import KLineChart from '@/components/KLineChart'
 
 interface Props {
@@ -17,12 +18,18 @@ interface Props {
 
 export default function TradeDetailContent({ id, mode = 'page', onSaved }: Props) {
   const router = useRouter()
-  const [trade, setTrade] = useState<Trade | null>(null)
-  const [strategies, setStrategies] = useState<Strategy[]>([])
-  const [account, setAccount] = useState<Account | null>(null)
-  const [rr, setRr] = useState('')
-  const [notes, setNotes] = useState('')
-  const [strategyId, setStrategyId] = useState('')
+  // Seed everything from cache so the modal renders fully — including strategy chips —
+  // on the first paint, without any "晚一拍" flash.
+  const cachedTrade = tradeCache.get(id) ?? null
+  const cachedAccount = cachedTrade ? tradeCache.getAccount(cachedTrade.account_id) ?? null : null
+  const cachedStrategies = cachedTrade ? tradeCache.getStrategies(cachedTrade.account_id) ?? [] : []
+
+  const [trade, setTrade] = useState<Trade | null>(cachedTrade)
+  const [strategies, setStrategies] = useState<Strategy[]>(cachedStrategies)
+  const [account, setAccount] = useState<Account | null>(cachedAccount)
+  const [rr, setRr] = useState(cachedTrade?.rr_ratio?.toString() ?? '')
+  const [notes, setNotes] = useState(cachedTrade?.notes ?? '')
+  const [strategyId, setStrategyId] = useState(cachedTrade?.strategy_id ?? '')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -31,13 +38,23 @@ export default function TradeDetailContent({ id, mode = 'page', onSaved }: Props
         if (!data) return
         const t = data as Trade
         setTrade(t)
-        setRr(t.rr_ratio?.toString() ?? '')
-        setNotes(t.notes ?? '')
-        setStrategyId(t.strategy_id ?? '')
+        tradeCache.set(t)
+        // Only seed editable fields if they were empty (don't clobber user typing)
+        setRr(prev => prev || (t.rr_ratio?.toString() ?? ''))
+        setNotes(prev => prev || (t.notes ?? ''))
+        setStrategyId(prev => prev || (t.strategy_id ?? ''))
         supabase.from('accounts').select('*').eq('id', t.account_id).single()
-          .then(({ data: acc }) => acc && setAccount(acc as Account))
+          .then(({ data: acc }) => {
+            if (!acc) return
+            setAccount(acc as Account)
+            tradeCache.setAccount(acc as Account)
+          })
         supabase.from('strategies').select('*').eq('account_id', t.account_id).order('sort_order')
-          .then(({ data: strats }) => strats && setStrategies(strats as Strategy[]))
+          .then(({ data: strats }) => {
+            if (!strats) return
+            setStrategies(strats as Strategy[])
+            tradeCache.setStrategies(t.account_id, strats as Strategy[])
+          })
       })
   }, [id])
 
@@ -54,9 +71,22 @@ export default function TradeDetailContent({ id, mode = 'page', onSaved }: Props
     else router.back()
   }
 
+  // No cache hit (rare — only direct URL navigation): keep the modal frame stable
+  // with a blur-in placeholder so it never shows a "loading" text flash.
   if (!trade) return (
-    <div className="flex items-center justify-center h-40 fs-meta" style={{ color: 'var(--muted)' }}>
-      載入中...
+    <div aria-busy="true" className="trade-blur-in">
+      <div className="mb-5">
+        <div className="flex items-end justify-between gap-3 mb-3">
+          <div className="h-9 w-24 rounded" style={{ background: 'var(--raised)' }} />
+          <div className="h-6 w-32 rounded" style={{ background: 'var(--raised)' }} />
+        </div>
+        <div className="retro-divider" />
+      </div>
+      <div className="retro-card mb-3 h-[180px]" style={{ background: 'var(--raised)' }} />
+      <div className="retro-card mb-3 h-[150px]" style={{ background: 'var(--raised)' }} />
+      <div className="retro-card mb-3 h-[200px]" style={{ background: 'var(--raised)' }} />
+      <div className="retro-card mb-4 h-[100px]" style={{ background: 'var(--raised)' }} />
+      <div className="h-12 retro-card" style={{ background: 'var(--raised)' }} />
     </div>
   )
 
@@ -65,7 +95,7 @@ export default function TradeDetailContent({ id, mode = 'page', onSaved }: Props
   const riskAmount = account ? (account.initial_capital * account.risk_percent) / 100 : 0
 
   return (
-    <>
+    <div className="trade-blur-in">
       {/* Header — different chrome depending on mode */}
       {mode === 'page' && (
         <header className="mb-6">
@@ -200,7 +230,7 @@ export default function TradeDetailContent({ id, mode = 'page', onSaved }: Props
         style={{ background: 'var(--accent)', color: 'var(--border)', border: '1.5px solid var(--border)', borderRadius: 4 }}>
         {saving ? '儲存中...' : '儲存'}
       </button>
-    </>
+    </div>
   )
 }
 

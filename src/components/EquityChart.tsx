@@ -31,6 +31,32 @@ function fmtDelta(delta: number): string {
   return (delta > 0 ? '+' : '') + '$' + delta.toFixed(1)
 }
 
+// Catmull-Rom → cubic Bezier smoothing. Tension 6 = soft curve, no overshoot in equity data.
+// Control points' X are clamped to the segment range to prevent X-axis folding
+// when X spacing is uneven (e.g. trade-day clusters with long flat tail).
+function smoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return ''
+  if (pts.length === 2) return `M${pts[0].x},${pts[0].y} L${pts[1].x},${pts[1].y}`
+  const t = 6
+  let d = `M${pts[0].x},${pts[0].y}`
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)]
+    const p1 = pts[i]
+    const p2 = pts[i + 1]
+    const p3 = pts[Math.min(pts.length - 1, i + 2)]
+    let c1x = p1.x + (p2.x - p0.x) / t
+    const c1y = p1.y + (p2.y - p0.y) / t
+    let c2x = p2.x - (p3.x - p1.x) / t
+    const c2y = p2.y - (p3.y - p1.y) / t
+    if (c1x < p1.x) c1x = p1.x
+    if (c1x > p2.x) c1x = p2.x
+    if (c2x < p1.x) c2x = p1.x
+    if (c2x > p2.x) c2x = p2.x
+    d += ` C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`
+  }
+  return d
+}
+
 export default function EquityChart({ trades, initialCapital }: Props) {
   const [range, setRange] = useState<Range>('90d')
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
@@ -111,11 +137,8 @@ export default function EquityChart({ trades, initialCapital }: Props) {
     for (let i = 0; i < n; i += xStep) xIndices.push(i)
     if (xIndices[xIndices.length - 1] !== n - 1) xIndices.push(n - 1)
 
-    const polyPoints = points.map((p, i) => `${toX(i)},${toY(p.equity)}`).join(' ')
-    const fillPath =
-      `M${toX(0)},${toY(points[0].equity)} ` +
-      points.map((p, i) => `L${toX(i)},${toY(p.equity)}`).join(' ') +
-      ` L${toX(n - 1)},${PT + CH} L${toX(0)},${PT + CH} Z`
+    const xy = points.map((p, i) => ({ x: toX(i), y: toY(p.equity) }))
+    const linePath = smoothPath(xy)
 
     const lastEquity = points[n - 1].equity
     const isUp = lastEquity >= initialCapital
@@ -124,7 +147,7 @@ export default function EquityChart({ trades, initialCapital }: Props) {
     const hx = hoverIdx !== null ? toX(hoverIdx) : 0
     const hy = hoverIdx !== null ? toY(points[hoverIdx].equity) : 0
 
-    return { toX, toY, yTicks, xIndices, polyPoints, fillPath, lastEquity, isUp, color, hx, hy, n }
+    return { toX, toY, yTicks, xIndices, linePath, lastEquity, isUp, color, hx, hy, n }
   })()
 
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
@@ -175,10 +198,6 @@ export default function EquityChart({ trades, initialCapital }: Props) {
             onMouseLeave={() => setHoverIdx(null)}
           >
             <defs>
-              <linearGradient id="eq-grad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={chartContent.isUp ? 'var(--profit)' : 'var(--loss)'} stopOpacity="0.18" />
-                <stop offset="100%" stopColor={chartContent.isUp ? 'var(--profit)' : 'var(--loss)'} stopOpacity="0" />
-              </linearGradient>
               <clipPath id="chart-clip">
                 <rect x={ML} y={PT} width={CW} height={CH} />
               </clipPath>
@@ -204,10 +223,9 @@ export default function EquityChart({ trades, initialCapital }: Props) {
               </text>
             ))}
 
-            {/* Chart fill + line */}
-            <path d={chartContent.fillPath} fill="url(#eq-grad)" clipPath="url(#chart-clip)" />
-            <polyline points={chartContent.polyPoints} fill="none" stroke={chartContent.color}
-              strokeWidth="1.5" strokeLinejoin="round" clipPath="url(#chart-clip)" />
+            {/* Line only — no shaded area under the curve */}
+            <path d={chartContent.linePath} fill="none" stroke={chartContent.color}
+              strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" clipPath="url(#chart-clip)" />
 
             {/* Hover guide + dot */}
             {hoverIdx !== null && (

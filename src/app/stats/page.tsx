@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Trade, Account, Strategy } from '@/lib/types'
 import { fmtPnl } from '@/lib/types'
+import { tradeCache } from '@/lib/trade-cache'
 import EquityChart from '@/components/EquityChart'
 import StrategyCard from '@/components/StrategyCard'
 import StrategyEquityChart from '@/components/StrategyEquityChart'
@@ -24,30 +25,47 @@ export default function StatsPage() {
 
   const [stratRange, setStratRange] = useState<Range>('30d')
   const [sortKey, setSortKey] = useState<SortKey>('pnl')
+  const [selectedStrategyId, setSelectedStrategyId] = useState<string>('')
+  const [chartMode, setChartMode] = useState<'pnl' | 'winRate'>('pnl')
 
-  const current = accounts.find(a => a.name === account)
+  const current = useMemo(() => accounts.find(a => a.name === account), [accounts, account])
 
   useEffect(() => {
-    supabase.from('accounts').select('*').then(({ data }) => data && setAccounts(data as Account[]))
+    supabase.from('accounts').select('*').then(({ data }) => {
+      if (!data) return
+      setAccounts(data as Account[])
+      tradeCache.setAccounts(data as Account[])
+    })
   }, [])
 
   useEffect(() => {
     const acc = accounts.find(a => a.name === account)
     if (!acc) return
     supabase.from('strategies').select('*').eq('account_id', acc.id).order('sort_order')
-      .then(({ data }) => data && setStrategies(data as Strategy[]))
+      .then(({ data }) => {
+        if (!data) return
+        setStrategies(data as Strategy[])
+        tradeCache.setStrategies(acc.id, data as Strategy[])
+      })
     supabase.from('trades').select('*, strategies(name)')
       .eq('account_id', acc.id)
-      .then(({ data }) => data && setTrades(data as Trade[]))
+      .then(({ data }) => {
+        if (!data) return
+        setTrades(data as Trade[])
+        tradeCache.setMany(data as Trade[])
+      })
   }, [account, accounts])
 
-  const monthTrades = trades.filter(t => {
-    const d = new Date(t.entry_time ?? t.created_at)
-    return d.getFullYear() === month.y && d.getMonth() === month.m
-  })
-  const monthPnl = monthTrades.reduce((s, t) => s + (t.pnl ?? 0), 0)
-  const wins = monthTrades.filter(t => (t.pnl ?? 0) > 0)
-  const winRate = monthTrades.length ? Math.round((wins.length / monthTrades.length) * 100) : 0
+  const { monthTrades, monthPnl, winRate } = useMemo(() => {
+    const mt = trades.filter(t => {
+      const d = new Date(t.entry_time ?? t.created_at)
+      return d.getFullYear() === month.y && d.getMonth() === month.m
+    })
+    const pnl = mt.reduce((s, t) => s + (t.pnl ?? 0), 0)
+    const w = mt.filter(t => (t.pnl ?? 0) > 0).length
+    const wr = mt.length ? Math.round((w / mt.length) * 100) : 0
+    return { monthTrades: mt, monthPnl: pnl, winRate: wr }
+  }, [trades, month])
 
   const monthlyData = useMemo(() => {
     const cap = current?.initial_capital ?? 10000
@@ -73,6 +91,16 @@ export default function StatsPage() {
       .filter(m => m.count > 0)
     return sortMetrics(metrics, sortKey)
   }, [trades, strategies, stratRange, sortKey])
+
+  // Auto-select the top strategy when the list changes (or current selection vanished)
+  useEffect(() => {
+    if (!strategyMetrics.length) { setSelectedStrategyId(''); return }
+    if (!strategyMetrics.some(m => m.id === selectedStrategyId)) {
+      setSelectedStrategyId(strategyMetrics[0].id)
+    }
+  }, [strategyMetrics, selectedStrategyId])
+
+  const selectedMetric = strategyMetrics.find(m => m.id === selectedStrategyId) ?? null
 
   const monthLabel = `${month.y}年${month.m + 1}月`
 
@@ -187,16 +215,48 @@ export default function StatsPage() {
 
         <div className="p-4" style={{ borderBottom: '1.5px solid var(--border)' }}>
           {strategyMetrics.length > 0 && (
-            <div className="flex flex-wrap gap-x-4 gap-y-1.5 mb-3">
-              {strategyMetrics.map(m => (
-                <div key={m.id} className="flex items-center gap-1.5 fs-meta font-bold">
-                  <span className="w-2.5 h-2.5" style={{ background: m.color, border: '1px solid var(--border)' }} />
-                  <span style={{ color: 'var(--text)' }}>{m.name}</span>
-                </div>
-              ))}
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+              <div className="flex items-center gap-2">
+                <span className="fs-meta font-bold" style={{ color: 'var(--muted)' }}>策略</span>
+                <select value={selectedStrategyId}
+                  onChange={e => setSelectedStrategyId(e.target.value)}
+                  className="px-2 py-1 outline-none fs-meta font-bold cursor-pointer"
+                  style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--border)', borderRadius: 4, minWidth: 140 }}>
+                  {strategyMetrics.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-1.5">
+                {([
+                  { key: 'pnl', label: '盈虧' },
+                  { key: 'winRate', label: '勝率' },
+                ] as const).map(opt => (
+                  <button key={opt.key} onClick={() => setChartMode(opt.key)}
+                    data-active={chartMode === opt.key}
+                    className="retro-pill px-3 py-1 fs-meta">
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-          <StrategyEquityChart metrics={strategyMetrics} rangeStartMs={rangeStartMs(stratRange)} />
+          {selectedMetric && (
+            <div className="flex items-center justify-center gap-3 fs-meta font-bold mb-2">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5" style={{ background: selectedMetric.color, border: '1px solid var(--border)' }} />
+                <span style={{ color: 'var(--text)' }}>{selectedMetric.name}</span>
+              </span>
+              <span style={{ color: 'var(--muted)' }}>·</span>
+              <span style={{ color: selectedMetric.totalPnl >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
+                {fmtPnl(selectedMetric.totalPnl)}
+              </span>
+              <span style={{ color: 'var(--muted)' }}>·</span>
+              <span style={{ color: 'var(--accent2)' }}>{Math.round(selectedMetric.winRate)}%</span>
+              <span style={{ color: 'var(--muted)' }}>· {selectedMetric.count} 筆</span>
+            </div>
+          )}
+          <StrategyEquityChart metric={selectedMetric} rangeStartMs={rangeStartMs(stratRange)} mode={chartMode} />
         </div>
 
         <div className="p-4">

@@ -8,25 +8,6 @@ interface Props {
   metric: StrategyMetric
 }
 
-function Sparkline({ points, color }: { points: { time: number; equity: number }[]; color: string }) {
-  if (points.length < 2) {
-    return <div className="h-[26px] flex items-center fs-tiny" style={{ color: 'var(--muted)' }}>—</div>
-  }
-  const equities = points.map(p => p.equity)
-  const minE = Math.min(...equities)
-  const maxE = Math.max(...equities)
-  const rng = maxE - minE || 1
-  const W = 100, H = 26
-  const toX = (i: number) => (i / (points.length - 1)) * W
-  const toY = (e: number) => H - 2 - ((e - minE) / rng) * (H - 4)
-  const poly = points.map((p, i) => `${toX(i).toFixed(1)},${toY(p.equity).toFixed(1)}`).join(' ')
-  return (
-    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: 'block' }}>
-      <polyline points={poly} fill="none" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
 export default function StrategyCard({ metric }: Props) {
   const m = metric
   const pnlColor = m.totalPnl >= 0 ? 'var(--profit)' : 'var(--loss)'
@@ -57,10 +38,7 @@ export default function StrategyCard({ metric }: Props) {
         </div>
       </div>
 
-      {/* Sparkline */}
-      <div className="mb-3" style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '4px 0' }}>
-        <Sparkline points={m.equityCurve} color={m.color} />
-      </div>
+      <div className="mb-3" style={{ borderTop: '1px solid var(--border)' }} />
 
       {/* Detail grid */}
       <div className="grid grid-cols-2 gap-y-1 gap-x-3 fs-meta retro-mono">

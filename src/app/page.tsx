@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { Trade, Account } from '@/lib/types'
+import type { Trade, Account, Strategy } from '@/lib/types'
 import { fmtPnl } from '@/lib/types'
+import { tradeCache } from '@/lib/trade-cache'
 import TradeItem from '@/components/TradeItem'
 import EquityChart from '@/components/EquityChart'
 
@@ -32,36 +33,42 @@ export default function Dashboard() {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr)
   const [loading, setLoading] = useState(true)
 
-  const current = accounts.find(a => a.name === account)
+  const current = useMemo(() => accounts.find(a => a.name === account), [accounts, account])
   const riskAmount = current ? (current.initial_capital * current.risk_percent) / 100 : 0
 
-  // Derive available months from loaded trades
-  const availableMonths = [...new Set(trades.map(t => {
-    const d = new Date(t.entry_time ?? t.created_at)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  }))].sort().reverse()
+  const availableMonths = useMemo(() => (
+    [...new Set(trades.map(t => {
+      const d = new Date(t.entry_time ?? t.created_at)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    }))].sort().reverse()
+  ), [trades])
 
-  const monthTrades = trades.filter(t => {
-    const d = new Date(t.entry_time ?? t.created_at)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === selectedMonth
-  })
-
-  const wins = monthTrades.filter(t => (t.pnl ?? 0) > 0)
-  const winRate = monthTrades.length ? Math.round((wins.length / monthTrades.length) * 100) : 0
-  const monthPnl = monthTrades.reduce((s, t) => s + (t.pnl ?? 0), 0)
-  const rrTrades = monthTrades.filter(t => t.rr_ratio)
-  const avgRR = rrTrades.length ? rrTrades.reduce((s, t) => s + (t.rr_ratio ?? 0), 0) / rrTrades.length : 0
+  const { monthTrades, monthPnl, winRate } = useMemo(() => {
+    const mt = trades.filter(t => {
+      const d = new Date(t.entry_time ?? t.created_at)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === selectedMonth
+    })
+    const pnl = mt.reduce((s, t) => s + (t.pnl ?? 0), 0)
+    const w = mt.filter(t => (t.pnl ?? 0) > 0).length
+    const wr = mt.length ? Math.round((w / mt.length) * 100) : 0
+    return { monthTrades: mt, monthPnl: pnl, winRate: wr }
+  }, [trades, selectedMonth])
 
   useEffect(() => {
     supabase.from('accounts').select('*').then(({ data }) => {
       setLoading(false)
       if (!data) return
       setAccounts(data as Account[])
+      tradeCache.setAccounts(data as Account[])
       data.forEach((acc: Account) => {
         supabase.from('trades').select('pnl').eq('account_id', acc.id)
           .then(({ data: td }) => {
             const sum = td?.reduce((s, t) => s + (t.pnl ?? 0), 0) ?? 0
             setAllPnl(prev => ({ ...prev, [acc.name]: sum }))
+          })
+        supabase.from('strategies').select('*').eq('account_id', acc.id).order('sort_order')
+          .then(({ data: strats }) => {
+            if (strats) tradeCache.setStrategies(acc.id, strats as Strategy[])
           })
       })
     })
@@ -76,7 +83,11 @@ export default function Dashboard() {
       .select('*, strategies(name)')
       .eq('account_id', acc.id)
       .order('entry_time', { ascending: false })
-      .then(({ data }) => data && setTrades(data as Trade[]))
+      .then(({ data }) => {
+        if (!data) return
+        setTrades(data as Trade[])
+        tradeCache.setMany(data as Trade[])
+      })
   }, [account, accounts])
 
   async function syncBingX() {
@@ -95,6 +106,7 @@ export default function Dashboard() {
         .eq('account_id', acc.id)
         .order('entry_time', { ascending: false })
       if (data) {
+        tradeCache.setMany(data as Trade[])
         if (account === 'bingx') setTrades(data as Trade[])
         const sum = data.reduce((s, t) => s + ((t as { pnl?: number }).pnl ?? 0), 0)
         setAllPnl(prev => ({ ...prev, bingx: sum }))

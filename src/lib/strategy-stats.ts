@@ -49,6 +49,7 @@ export interface StrategyMetric {
   maxWinStreak: number
   maxLossStreak: number
   equityCurve: { time: number; equity: number }[]
+  winRateCurve: { time: number; winRate: number }[]   // cumulative win rate after each trade, 0..100
 }
 
 function tradeTime(t: Trade): number {
@@ -77,10 +78,16 @@ export function computeStrategyMetric(
   }
 
   let acc = 0
+  let winsSoFar = 0
+  let totalSoFar = 0
   const equityCurve: { time: number; equity: number }[] = [{ time: 0, equity: 0 }]
+  const winRateCurve: { time: number; winRate: number }[] = [{ time: 0, winRate: 0 }]
   for (const t of st) {
     acc += t.pnl ?? 0
     equityCurve.push({ time: tradeTime(t), equity: acc })
+    totalSoFar++
+    if ((t.pnl ?? 0) > 0) winsSoFar++
+    winRateCurve.push({ time: tradeTime(t), winRate: (winsSoFar / totalSoFar) * 100 })
   }
 
   const rrTrades = st.filter(t => t.rr_ratio != null)
@@ -102,6 +109,7 @@ export function computeStrategyMetric(
     maxWinStreak: maxW,
     maxLossStreak: maxL,
     equityCurve,
+    winRateCurve,
   }
 }
 

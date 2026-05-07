@@ -50,6 +50,8 @@ body::before {
     url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1  0 0 0 0 0.07  0 0 0 0 0.04  0 0 0 0.32 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
   mix-blend-mode: multiply;
   opacity: 0.85;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 /* Coarser grain — subtle warm spots like aged paper */
@@ -63,10 +65,23 @@ body::after {
     url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.012' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.20  0 0 0 0.18 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
   mix-blend-mode: multiply;
   opacity: 0.55;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 /* App content sits above grain layer (modal handles its own stacking) */
 body > div.flex { position: relative; z-index: 1; }
+
+/* Snappier interactions: shorten Tailwind's default 150ms color/transform fades. */
+.transition-colors,
+.transition { transition-duration: 80ms; }
+
+/* Blur-to-clear entrance for modal content (instant feel, no "loading" flash) */
+@keyframes trade-blur-in {
+  from { filter: blur(6px); opacity: 0.5; }
+  to   { filter: blur(0);   opacity: 1; }
+}
+.trade-blur-in { animation: trade-blur-in 180ms ease-out; }
 
 /* scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
