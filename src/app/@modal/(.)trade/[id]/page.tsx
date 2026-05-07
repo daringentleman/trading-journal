@@ -22,8 +22,15 @@ export default function TradeModalPage({ params }: { params: Promise<{ id: strin
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8"
-      style={{ background: 'rgba(26, 20, 16, 0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+      className="flex items-center justify-center p-4 md:p-8"
+      style={{
+        position: 'fixed',
+        top: 0, left: 0, right: 0, bottom: 0,
+        zIndex: 100,
+        background: 'rgba(26, 20, 16, 0.45)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+      }}
       onClick={() => router.back()}
     >
       <div

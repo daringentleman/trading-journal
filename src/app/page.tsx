@@ -187,9 +187,13 @@ export default function Dashboard() {
             </div>
           </div>
         ) : current ? (
-          <div className="rounded-[10px] p-4 mb-3 md:mb-0 border flex flex-col" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-            <div className="text-[10px] uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>風險管理</div>
-            <div className="grid grid-cols-2 gap-2 flex-1">
+          <section className="retro-card mb-3 md:mb-0 overflow-hidden flex flex-col">
+            <div className="px-4 py-3 flex items-center justify-between"
+              style={{ background: 'var(--accent2)', borderBottom: '1.5px solid var(--border)' }}>
+              <h2 className="retro-display fs-section" style={{ color: '#fff' }}>風險管理</h2>
+              <span className="fs-meta retro-display" style={{ color: '#fff' }}>RISK · CONTROL</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 flex-1 p-4">
               <div className="rounded-lg p-3 border" style={{ background: 'var(--raised)', borderColor: 'var(--border)' }}>
                 <div className="text-[10px] uppercase tracking-wide mb-2" style={{ color: 'var(--muted)' }}>
                   {ACCOUNT_LABEL[account]}
@@ -221,17 +225,23 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-          </div>
+          </section>
         ) : null}
 
         {/* Equity chart */}
-        <div className="rounded-[10px] p-4 mb-3 md:mb-0 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-          <div className="text-[10px] uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>資產走勢</div>
-          <EquityChart
-            trades={trades}
-            initialCapital={(current?.initial_capital ?? 10000) + (account === 'tradovate' ? (allPnl.bingx ?? 0) : 0)}
-          />
-        </div>
+        <section className="retro-card mb-3 md:mb-0 overflow-hidden">
+          <div className="px-4 py-3 flex items-center justify-between"
+            style={{ background: 'var(--accent2)', borderBottom: '1.5px solid var(--border)' }}>
+            <h2 className="retro-display fs-section" style={{ color: '#fff' }}>資產走勢</h2>
+            <span className="fs-meta retro-display" style={{ color: '#fff' }}>EQUITY · CHART</span>
+          </div>
+          <div className="p-4">
+            <EquityChart
+              trades={trades}
+              initialCapital={(current?.initial_capital ?? 10000) + (account === 'tradovate' ? (allPnl.bingx ?? 0) : 0)}
+            />
+          </div>
+        </section>
       </div>
 
       {/* Month trade list */}

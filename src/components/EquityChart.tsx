@@ -165,7 +165,7 @@ export default function EquityChart({ trades, initialCapital }: Props) {
           此時間範圍內無交易記錄
         </div>
       ) : (
-        <div ref={wrapperRef} className="relative w-full">
+        <div ref={wrapperRef} className="relative w-full max-w-[640px] mx-auto">
           <svg
             width="100%"
             viewBox={`0 0 ${TW} ${TH}`}

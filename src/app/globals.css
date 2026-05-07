@@ -90,11 +90,12 @@ body > div.flex { position: relative; z-index: 1; }
 .retro-mono { font-family: var(--font-mono), 'Space Mono', monospace; }
 
 /* Offset-print echo — 70s newspaper misregistration look.
-   Main type orange-red, dark echo offset behind. */
+   Main type orange-red, soft translucent dark shadow behind. */
 .retro-distressed {
   color: var(--accent2);
   text-shadow:
-    3px 3px 0 var(--border);
+    4px 4px 0 rgba(26, 20, 16, 0.28),
+    5px 5px 12px rgba(26, 20, 16, 0.18);
 }
 
 /* Newspaper-style thick-bordered card */
