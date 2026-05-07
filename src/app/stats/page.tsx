@@ -41,7 +41,6 @@ export default function StatsPage() {
       .then(({ data }) => data && setTrades(data as Trade[]))
   }, [account, accounts])
 
-  // Month-scoped summary (top of page)
   const monthTrades = trades.filter(t => {
     const d = new Date(t.entry_time ?? t.created_at)
     return d.getFullYear() === month.y && d.getMonth() === month.m
@@ -50,7 +49,6 @@ export default function StatsPage() {
   const wins = monthTrades.filter(t => (t.pnl ?? 0) > 0)
   const winRate = monthTrades.length ? Math.round((wins.length / monthTrades.length) * 100) : 0
 
-  // Monthly history table
   const monthlyData = useMemo(() => {
     const cap = current?.initial_capital ?? 10000
     const grouped: Record<string, number> = {}
@@ -65,7 +63,6 @@ export default function StatsPage() {
     })
   }, [trades, current])
 
-  // Strategy metrics — filtered to chosen range
   const strategyMetrics = useMemo(() => {
     const startMs = rangeStartMs(stratRange)
     const rangeTrades = trades.filter(t => {
@@ -80,91 +77,106 @@ export default function StatsPage() {
   const monthLabel = `${month.y}年${month.m + 1}月`
 
   return (
-    <div className="px-4 py-5 md:px-8 md:py-7">
-      <div className="mb-5 flex items-baseline gap-3">
-        <h1 className="text-[17px] font-semibold">統計</h1>
-      </div>
+    <div className="retro-theme min-h-screen px-4 py-5 md:px-8 md:py-7">
+      {/* Headline — newspaper masthead */}
+      <header className="mb-6">
+        <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
+          <h1 className="retro-display retro-shadow text-[44px] md:text-[64px]">STATS</h1>
+          <div className="text-[11px] uppercase tracking-[0.2em]" style={{ color: 'var(--muted)' }}>
+            交易日誌 · {new Date().toLocaleDateString('zh-TW')}
+          </div>
+        </div>
+        <div className="retro-divider" />
+      </header>
 
-      {/* Account + month nav + monthly summary */}
-      <div className="md:flex md:items-center md:gap-4 md:mb-4">
-        <div className="flex gap-1.5 p-1 rounded-lg mb-3 md:mb-0 md:w-56 border shrink-0" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+      {/* Account + month nav */}
+      <div className="md:flex md:items-center md:gap-4 md:mb-5">
+        <div className="flex gap-1.5 p-1 mb-3 md:mb-0 md:w-60 shrink-0 retro-card">
           {(['tradovate', 'bingx'] as const).map(name => (
             <button key={name} onClick={() => setAccount(name)}
-              className="flex-1 py-1.5 rounded-md text-[13px] transition-colors"
-              style={{ background: account === name ? 'var(--raised)' : 'transparent', color: account === name ? 'var(--text)' : 'var(--muted)' }}>
+              className="flex-1 py-1.5 text-[12px] uppercase tracking-wider font-bold transition-colors"
+              style={{
+                background: account === name ? 'var(--accent)' : 'transparent',
+                color: 'var(--border)',
+                borderRadius: 4,
+              }}>
               {name === 'tradovate' ? 'Prop Firm' : 'Crypto'}
             </button>
           ))}
         </div>
 
-        <div className="flex items-center justify-between mb-4 md:mb-0 md:gap-2">
+        <div className="flex items-center gap-2 mb-4 md:mb-0">
           <button onClick={() => setMonth(p => { const d = new Date(p.y, p.m - 1); return { y: d.getFullYear(), m: d.getMonth() } })}
-            className="text-[18px] px-2" style={{ color: 'var(--muted)' }}>‹</button>
-          <span className="text-[15px] font-semibold">{monthLabel}</span>
+            className="w-8 h-8 retro-card flex items-center justify-center text-[16px] font-bold">‹</button>
+          <span className="retro-display text-[18px] px-3 py-1.5 retro-card min-w-[110px] text-center">{monthLabel}</span>
           <button onClick={() => setMonth(p => { const d = new Date(p.y, p.m + 1); return { y: d.getFullYear(), m: d.getMonth() } })}
-            className="text-[18px] px-2" style={{ color: 'var(--muted)' }}>›</button>
+            className="w-8 h-8 retro-card flex items-center justify-center text-[16px] font-bold">›</button>
         </div>
 
-        <div className="hidden md:flex gap-2 flex-1">
+        <div className="hidden md:grid grid-cols-3 gap-2 flex-1">
           {[
             { label: '損益', val: fmtPnl(monthPnl), color: monthPnl >= 0 ? 'var(--profit)' : 'var(--loss)' },
-            { label: '勝率', val: `${winRate}%`, color: 'var(--accent)' },
+            { label: '勝率', val: `${winRate}%`, color: 'var(--accent2)' },
             { label: '次數', val: `${monthTrades.length}`, color: 'var(--text)' },
           ].map(s => (
-            <div key={s.label} className="rounded-[10px] px-4 py-2.5 border flex items-center gap-3" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-              <span className="text-[10px]" style={{ color: 'var(--muted)' }}>{s.label}</span>
-              <span className="text-[16px] font-semibold" style={{ color: s.color }}>{s.val}</span>
+            <div key={s.label} className="retro-card px-4 py-2.5 flex items-center justify-between gap-3">
+              <span className="text-[10px] uppercase tracking-widest font-bold" style={{ color: 'var(--muted)' }}>{s.label}</span>
+              <span className="retro-display retro-mono text-[20px]" style={{ color: s.color }}>{s.val}</span>
             </div>
           ))}
         </div>
       </div>
 
       {/* Mobile summary */}
-      <div className="grid grid-cols-3 gap-2 mb-3 md:hidden">
+      <div className="grid grid-cols-3 gap-2 mb-4 md:hidden">
         {[
           { label: '損益', val: fmtPnl(monthPnl), color: monthPnl >= 0 ? 'var(--profit)' : 'var(--loss)' },
-          { label: '勝率', val: `${winRate}%`, color: 'var(--accent)' },
+          { label: '勝率', val: `${winRate}%`, color: 'var(--accent2)' },
           { label: '次數', val: `${monthTrades.length}`, color: 'var(--text)' },
         ].map(s => (
-          <div key={s.label} className="rounded-[10px] p-3 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-            <div className="text-[10px] mb-1" style={{ color: 'var(--muted)' }}>{s.label}</div>
-            <div className="text-[18px] font-semibold" style={{ color: s.color }}>{s.val}</div>
+          <div key={s.label} className="retro-card p-3">
+            <div className="text-[9px] uppercase tracking-widest font-bold mb-1" style={{ color: 'var(--muted)' }}>{s.label}</div>
+            <div className="retro-display retro-mono text-[19px]" style={{ color: s.color }}>{s.val}</div>
           </div>
         ))}
       </div>
 
-      {/* Main equity chart */}
-      <div className="rounded-[10px] p-4 mb-5 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-        <div className="text-[10px] uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>資產走勢</div>
+      {/* Equity chart */}
+      <section className="retro-card p-4 mb-5">
+        <div className="flex items-baseline justify-between mb-3">
+          <h2 className="retro-display text-[20px]">資產走勢</h2>
+          <span className="text-[10px] uppercase tracking-widest" style={{ color: 'var(--muted)' }}>EQUITY</span>
+        </div>
         <EquityChart trades={trades} initialCapital={current?.initial_capital ?? 10000} />
-      </div>
+      </section>
 
       {/* ===== Strategy overview ===== */}
-      <div className="mb-5">
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
-          <div className="text-[10px] uppercase tracking-widest" style={{ color: 'var(--muted)' }}>策略總覽</div>
+      <section className="retro-card mb-5 overflow-hidden">
+        {/* Section masthead */}
+        <div className="px-4 py-3 flex items-center justify-between"
+          style={{ background: 'var(--accent)', borderBottom: '1.5px solid var(--border)' }}>
+          <h2 className="retro-display text-[22px]" style={{ color: 'var(--border)' }}>策略總覽</h2>
+          <span className="retro-display text-[11px] tracking-[0.2em]" style={{ color: 'var(--border)' }}>STRATEGY · OVERVIEW</span>
+        </div>
 
-          {/* Range tabs */}
-          <div className="flex gap-1.5">
+        {/* Controls */}
+        <div className="px-4 py-3 flex items-center justify-between flex-wrap gap-3"
+          style={{ borderBottom: '1.5px solid var(--border)', background: 'var(--raised)' }}>
+          <div className="flex gap-1.5 flex-wrap">
             {RANGE_OPTIONS.map(r => (
               <button key={r.key} onClick={() => setStratRange(r.key)}
-                className="px-2.5 py-0.5 rounded-full text-[11px] border transition-colors"
-                style={{
-                  background: stratRange === r.key ? 'var(--raised)' : 'transparent',
-                  borderColor: stratRange === r.key ? 'var(--border2)' : 'var(--border)',
-                  color: stratRange === r.key ? 'var(--text)' : 'var(--muted)',
-                }}>
+                data-active={stratRange === r.key}
+                className="retro-pill retro-pill-orange px-3 py-1 text-[11px] uppercase tracking-wider font-bold transition-colors">
                 {r.label}
               </button>
             ))}
           </div>
 
-          {/* Sort selector */}
-          <div className="flex items-center gap-1.5 text-[11px]">
-            <span style={{ color: 'var(--muted)' }}>排序</span>
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className="uppercase tracking-widest font-bold" style={{ color: 'var(--muted)' }}>排序</span>
             <select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}
-              className="rounded-md px-2 py-1 border outline-none"
-              style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text)' }}>
+              className="px-2 py-1 outline-none text-[11px] uppercase tracking-wider font-bold cursor-pointer"
+              style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--border)', borderRadius: 4 }}>
               {SORT_OPTIONS.map(o => (
                 <option key={o.key} value={o.key}>{o.label}</option>
               ))}
@@ -172,14 +184,14 @@ export default function StatsPage() {
           </div>
         </div>
 
-        {/* Multi-strategy equity chart */}
-        <div className="rounded-[10px] p-4 mb-3 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+        {/* Strategy chart with legend */}
+        <div className="p-4" style={{ borderBottom: '1.5px solid var(--border)' }}>
           {strategyMetrics.length > 0 && (
-            <div className="flex flex-wrap gap-x-3 gap-y-1 mb-3">
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5 mb-3">
               {strategyMetrics.map(m => (
-                <div key={m.id} className="flex items-center gap-1.5 text-[11px]">
-                  <span className="w-2 h-2 rounded-full" style={{ background: m.color }} />
-                  <span style={{ color: 'var(--muted)' }}>{m.name}</span>
+                <div key={m.id} className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-bold">
+                  <span className="w-2.5 h-2.5" style={{ background: m.color, border: '1px solid var(--border)' }} />
+                  <span style={{ color: 'var(--text)' }}>{m.name}</span>
                 </div>
               ))}
             </div>
@@ -188,45 +200,51 @@ export default function StatsPage() {
         </div>
 
         {/* Strategy cards grid */}
-        {strategyMetrics.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {strategyMetrics.map(m => <StrategyCard key={m.id} metric={m} />)}
-          </div>
-        ) : (
-          <div className="rounded-[10px] p-6 text-center text-[12px] border" style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--muted)' }}>
-            此時間範圍內無策略資料
-          </div>
-        )}
-      </div>
+        <div className="p-4">
+          {strategyMetrics.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {strategyMetrics.map(m => <StrategyCard key={m.id} metric={m} />)}
+            </div>
+          ) : (
+            <div className="p-8 text-center text-[12px] uppercase tracking-widest font-bold" style={{ color: 'var(--muted)' }}>
+              此時間範圍內無策略資料
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Monthly compound table */}
       {monthlyData.length > 0 && (
-        <div className="rounded-[10px] p-4 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-          <div className="text-[10px] uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>月度損益追蹤</div>
-          <table className="w-full text-[12px] border-collapse">
+        <section className="retro-card overflow-hidden">
+          <div className="px-4 py-3 flex items-center justify-between"
+            style={{ background: 'var(--accent2)', borderBottom: '1.5px solid var(--border)' }}>
+            <h2 className="retro-display text-[20px]" style={{ color: '#fff' }}>月度損益追蹤</h2>
+            <span className="retro-display text-[11px] tracking-[0.2em]" style={{ color: '#fff' }}>MONTHLY · LEDGER</span>
+          </div>
+          <table className="w-full text-[13px] border-collapse retro-mono">
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
+              <tr style={{ background: 'var(--raised)', borderBottom: '1.5px solid var(--border)' }}>
                 {['月份', '起始', '損益', '結餘'].map(h => (
-                  <th key={h} className="text-left py-1.5 px-2 font-normal" style={{ color: 'var(--muted)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.4px' }}>{h}</th>
+                  <th key={h} className="text-left py-2 px-3 font-bold uppercase tracking-widest" style={{ color: 'var(--border)', fontSize: '10px' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {monthlyData.map((row, i) => (
                 <tr key={i} style={{ borderBottom: i < monthlyData.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                  <td className="py-2 px-2">{row.label}</td>
-                  <td className="py-2 px-2">${row.initial.toLocaleString()}</td>
-                  <td className="py-2 px-2" style={{ color: row.pnl >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
+                  <td className="py-2.5 px-3 font-bold">{row.label}</td>
+                  <td className="py-2.5 px-3">${row.initial.toLocaleString()}</td>
+                  <td className="py-2.5 px-3 font-bold" style={{ color: row.pnl >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
                     {row.pnl >= 0 ? '+' : ''}${row.pnl.toFixed(0)}
                   </td>
-                  <td className="py-2 px-2" style={{ color: (row.initial + row.pnl) >= row.initial ? 'var(--profit)' : 'var(--loss)' }}>
+                  <td className="py-2.5 px-3 font-bold" style={{ color: (row.initial + row.pnl) >= row.initial ? 'var(--profit)' : 'var(--loss)' }}>
                     ${(row.initial + row.pnl).toFixed(0)}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </section>
       )}
     </div>
   )

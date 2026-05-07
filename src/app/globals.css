@@ -10,6 +10,7 @@
   --muted:   #52526a;
   --muted2:  #38384e;
   --accent:  #c89b3c;
+  --accent2: #c89b3c;
   --profit:  #16a34a;
   --loss:    #b91c1c;
 }
@@ -27,3 +28,104 @@ body {
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* ============================================================
+   Retro theme — scoped via .retro-theme on a wrapper
+   Override CSS variables so all child components using var(--xxx)
+   pick up the new palette automatically.
+   ============================================================ */
+.retro-theme {
+  --bg:      #ede4cf;
+  --surface: #f5ebd5;
+  --raised:  #e0d3b3;
+  --border:  #1a1410;
+  --border2: #2a2018;
+  --text:    #1a1410;
+  --muted:   #6b5d44;
+  --muted2:  #8b7d64;
+  --accent:  #e8c93b;
+  --accent2: #e8624c;
+  --profit:  #2e7d3e;
+  --loss:    #b91c1c;
+
+  position: relative;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body), 'Inter', -apple-system, sans-serif;
+}
+
+/* Paper grain overlay — fixed so it covers the viewport, behind content */
+.retro-theme::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1  0 0 0 0 0.07  0 0 0 0 0.04  0 0 0 0.18 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  mix-blend-mode: multiply;
+  opacity: 0.55;
+}
+
+.retro-theme > * { position: relative; z-index: 1; }
+
+/* Display heavy headline */
+.retro-display {
+  font-family: var(--font-display), 'Archivo Black', 'Impact', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 0.95;
+}
+
+/* 3D offset shadow — yellow fill + black echo */
+.retro-shadow {
+  color: var(--accent);
+  text-shadow:
+    2px 2px 0 var(--border),
+    3px 3px 0 var(--border);
+  -webkit-text-stroke: 1px var(--border);
+  paint-order: stroke fill;
+}
+
+/* Newspaper-style thick-bordered card */
+.retro-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+}
+
+/* Double divider line */
+.retro-divider {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  height: 4px;
+}
+
+/* Yellow arrow CTA button */
+.retro-arrow-btn {
+  background: var(--accent);
+  border: 1.5px solid var(--border);
+  color: var(--border);
+  font-weight: 600;
+}
+.retro-arrow-btn:hover {
+  background: #f0d350;
+}
+
+/* Mono numerals */
+.retro-mono { font-family: var(--font-mono), 'Space Mono', monospace; }
+
+/* Pill button (active = yellow, inactive = transparent black border) */
+.retro-pill {
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--border);
+  border-radius: 999px;
+}
+.retro-pill[data-active='true'] {
+  background: var(--accent);
+  color: var(--border);
+}
+.retro-pill-orange[data-active='true'] {
+  background: var(--accent2);
+  color: #fff;
+}

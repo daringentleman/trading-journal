@@ -1,6 +1,11 @@
 import type { Metadata } from 'next'
+import { Archivo_Black, Inter, Space_Mono } from 'next/font/google'
 import './globals.css'
 import Nav from '@/components/Nav'
+
+const archivoBlack = Archivo_Black({ subsets: ['latin'], weight: '400', variable: '--font-display' })
+const inter = Inter({ subsets: ['latin'], variable: '--font-body' })
+const spaceMono = Space_Mono({ subsets: ['latin'], weight: ['400', '700'], variable: '--font-mono' })
 
 export const metadata: Metadata = {
   title: '交易日誌',
@@ -9,12 +14,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-TW">
+    <html lang="zh-TW" className={`${archivoBlack.variable} ${inter.variable} ${spaceMono.variable}`}>
       <body className="min-h-screen" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
-        {/* Desktop: sidebar + content */}
         <div className="flex min-h-screen">
           <Nav />
-          {/* Main content: left margin on desktop for sidebar, bottom padding on mobile for nav */}
           <main className="flex-1 md:ml-56 pb-16 md:pb-0">
             {children}
           </main>
