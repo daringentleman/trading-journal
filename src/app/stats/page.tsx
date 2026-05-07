@@ -81,7 +81,7 @@ export default function StatsPage() {
       {/* Headline — newspaper masthead */}
       <header className="mb-6">
         <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
-          <h1 className="retro-display fs-display md:text-[56px]">STATS</h1>
+          <h1 className="retro-display retro-distressed fs-display md:text-[72px]">STATS</h1>
           <div className="fs-meta" style={{ color: 'var(--muted)' }}>
             交易日誌 · {new Date().toLocaleDateString('zh-TW')}
           </div>
@@ -142,20 +142,23 @@ export default function StatsPage() {
       </div>
 
       {/* Equity chart */}
-      <section className="retro-card p-4 mb-5">
-        <div className="flex items-baseline justify-between mb-3">
-          <h2 className="retro-display fs-section">資產走勢</h2>
-          <span className="fs-meta" style={{ color: 'var(--muted)' }}>EQUITY</span>
+      <section className="retro-card mb-5 overflow-hidden">
+        <div className="px-4 py-3 flex items-center justify-between"
+          style={{ background: 'var(--accent2)', borderBottom: '1.5px solid var(--border)' }}>
+          <h2 className="retro-display retro-distressed fs-section" style={{ color: 'var(--bg)' }}>資產走勢</h2>
+          <span className="fs-meta retro-display retro-distressed" style={{ color: 'var(--bg)' }}>EQUITY · CHART</span>
         </div>
-        <EquityChart trades={trades} initialCapital={current?.initial_capital ?? 10000} />
+        <div className="p-4">
+          <EquityChart trades={trades} initialCapital={current?.initial_capital ?? 10000} />
+        </div>
       </section>
 
       {/* ===== Strategy overview ===== */}
       <section className="retro-card mb-5 overflow-hidden">
         <div className="px-4 py-3 flex items-center justify-between"
-          style={{ background: 'var(--border)', borderBottom: '1.5px solid var(--border)' }}>
-          <h2 className="retro-display fs-section" style={{ color: 'var(--bg)' }}>策略總覽</h2>
-          <span className="fs-meta retro-display" style={{ color: 'var(--bg)' }}>STRATEGY · OVERVIEW</span>
+          style={{ background: 'var(--accent2)', borderBottom: '1.5px solid var(--border)' }}>
+          <h2 className="retro-display retro-distressed fs-section" style={{ color: 'var(--bg)' }}>策略總覽</h2>
+          <span className="fs-meta retro-display retro-distressed" style={{ color: 'var(--bg)' }}>STRATEGY · OVERVIEW</span>
         </div>
 
         <div className="px-4 py-3 flex items-center justify-between flex-wrap gap-3"
@@ -213,9 +216,9 @@ export default function StatsPage() {
       {monthlyData.length > 0 && (
         <section className="retro-card overflow-hidden">
           <div className="px-4 py-3 flex items-center justify-between"
-            style={{ background: 'var(--border)', borderBottom: '1.5px solid var(--border)' }}>
-            <h2 className="retro-display fs-section" style={{ color: 'var(--bg)' }}>月度損益追蹤</h2>
-            <span className="fs-meta retro-display" style={{ color: 'var(--bg)' }}>MONTHLY · LEDGER</span>
+            style={{ background: 'var(--accent2)', borderBottom: '1.5px solid var(--border)' }}>
+            <h2 className="retro-display retro-distressed fs-section" style={{ color: 'var(--bg)' }}>月度損益追蹤</h2>
+            <span className="fs-meta retro-display retro-distressed" style={{ color: 'var(--bg)' }}>MONTHLY · LEDGER</span>
           </div>
           <table className="w-full border-collapse retro-mono fs-body">
             <thead>

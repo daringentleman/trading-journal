@@ -151,9 +151,13 @@ export default function SettingsPage() {
 
   return (
     <div className="px-4 py-5 md:px-8 md:py-7">
-      <div className="mb-5">
-        <h1 className="text-[17px] font-semibold">設定</h1>
-      </div>
+      <header className="mb-6">
+        <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
+          <h1 className="retro-display retro-distressed fs-display md:text-[72px]">SETTINGS</h1>
+          <div className="fs-meta" style={{ color: 'var(--muted)' }}>設定</div>
+        </div>
+        <div className="retro-divider" />
+      </header>
 
       {/* BingX API — full width */}
       <div className="rounded-[10px] p-4 mb-4 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>

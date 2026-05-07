@@ -58,26 +58,30 @@ export default function TradePage({ params }: { params: Promise<{ id: string }> 
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-5">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-5">
-        <button onClick={() => router.back()} className="text-[14px]" style={{ color: 'var(--accent)' }}>
+      <header className="mb-6">
+        <button onClick={() => router.back()} className="fs-meta retro-display mb-2 inline-flex items-center gap-1"
+          style={{ color: 'var(--border)' }}>
           ← 返回
         </button>
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-[17px] font-semibold">{trade.symbol}</h1>
-            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-              style={trade.direction === 'long'
-                ? { background: 'rgba(22,163,74,.12)', color: 'var(--profit)' }
-                : { background: 'rgba(185,28,28,.12)', color: 'var(--loss)' }}>
-              {trade.direction === 'long' ? '多' : '空'}
-            </span>
+        <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
+          <h1 className="retro-display retro-distressed fs-display md:text-[64px]">TRADE</h1>
+          <div className="text-right">
+            <div className="flex items-center gap-2 justify-end mb-1">
+              <span className="retro-display fs-section">{trade.symbol}</span>
+              <span className="text-[10px] px-1.5 py-0.5 font-bold uppercase border"
+                style={trade.direction === 'long'
+                  ? { background: 'rgba(46,125,62,.18)', color: 'var(--profit)', borderColor: 'var(--profit)' }
+                  : { background: 'rgba(185,28,28,.15)', color: 'var(--loss)', borderColor: 'var(--loss)' }}>
+                {trade.direction === 'long' ? '多' : '空'}
+              </span>
+            </div>
+            <p className="fs-meta retro-mono" style={{ color: 'var(--muted)' }}>
+              {fmtPnl(pnl)} · {durationLabel(trade.entry_time, trade.exit_time)}
+            </p>
           </div>
-          <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
-            {fmtPnl(pnl)} · {durationLabel(trade.entry_time, trade.exit_time)}
-          </p>
         </div>
-      </div>
+        <div className="retro-divider" />
+      </header>
 
       {/* Entry / Exit */}
       <div className="rounded-[10px] p-4 mb-3 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>

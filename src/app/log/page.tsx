@@ -183,11 +183,17 @@ export default function LogPage() {
 
   return (
     <div className="px-4 py-5 md:px-8 md:py-7">
-      <div className="mb-5 flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-[17px] font-semibold">交易記錄</h1>
-          <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>{filtered.length} 筆</p>
+      <header className="mb-6">
+        <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
+          <h1 className="retro-display retro-distressed fs-display md:text-[72px]">LOG</h1>
+          <div className="fs-meta" style={{ color: 'var(--muted)' }}>
+            交易記錄 · {filtered.length} 筆
+          </div>
         </div>
+        <div className="retro-divider" />
+      </header>
+
+      <div className="mb-5 flex items-center justify-end">
         <button
           onClick={() => { setBatchMode(b => !b); setSelectedIds(new Set()) }}
           disabled={strategies.length === 0}

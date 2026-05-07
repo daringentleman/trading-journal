@@ -107,11 +107,16 @@ export default function Dashboard() {
 
   return (
     <div className="px-4 py-5 md:px-8 md:py-7">
-      {/* Header */}
-      <div className="mb-5 flex items-baseline gap-3">
-        <h1 className="text-[17px] font-semibold">交易日誌</h1>
-        <p className="text-[11px]" style={{ color: 'var(--muted)' }}>{monthDisplay}</p>
-      </div>
+      {/* Header — newspaper masthead */}
+      <header className="mb-6">
+        <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
+          <h1 className="retro-display retro-distressed fs-display md:text-[72px]">DASHBOARD</h1>
+          <div className="fs-meta" style={{ color: 'var(--muted)' }}>
+            交易日誌 · {monthDisplay}
+          </div>
+        </div>
+        <div className="retro-divider" />
+      </header>
 
       {/* Account equity overview */}
       <div className="grid grid-cols-2 gap-2 mb-4">
