@@ -153,9 +153,9 @@ export default function StatsPage() {
       {/* ===== Strategy overview ===== */}
       <section className="retro-card mb-5 overflow-hidden">
         <div className="px-4 py-3 flex items-center justify-between"
-          style={{ background: 'var(--accent)', borderBottom: '1.5px solid var(--border)' }}>
-          <h2 className="retro-display fs-section">策略總覽</h2>
-          <span className="fs-meta retro-display">STRATEGY · OVERVIEW</span>
+          style={{ background: 'var(--border)', borderBottom: '1.5px solid var(--border)' }}>
+          <h2 className="retro-display fs-section" style={{ color: 'var(--bg)' }}>策略總覽</h2>
+          <span className="fs-meta retro-display" style={{ color: 'var(--bg)' }}>STRATEGY · OVERVIEW</span>
         </div>
 
         <div className="px-4 py-3 flex items-center justify-between flex-wrap gap-3"
@@ -164,7 +164,7 @@ export default function StatsPage() {
             {RANGE_OPTIONS.map(r => (
               <button key={r.key} onClick={() => setStratRange(r.key)}
                 data-active={stratRange === r.key}
-                className="retro-pill retro-pill-orange px-3 py-1 fs-meta transition-colors">
+                className="retro-pill px-3 py-1 fs-meta transition-colors">
                 {r.label}
               </button>
             ))}
@@ -213,9 +213,9 @@ export default function StatsPage() {
       {monthlyData.length > 0 && (
         <section className="retro-card overflow-hidden">
           <div className="px-4 py-3 flex items-center justify-between"
-            style={{ background: 'var(--accent2)', borderBottom: '1.5px solid var(--border)' }}>
-            <h2 className="retro-display fs-section" style={{ color: '#fff' }}>月度損益追蹤</h2>
-            <span className="fs-meta retro-display" style={{ color: '#fff' }}>MONTHLY · LEDGER</span>
+            style={{ background: 'var(--border)', borderBottom: '1.5px solid var(--border)' }}>
+            <h2 className="retro-display fs-section" style={{ color: 'var(--bg)' }}>月度損益追蹤</h2>
+            <span className="fs-meta retro-display" style={{ color: 'var(--bg)' }}>MONTHLY · LEDGER</span>
           </div>
           <table className="w-full border-collapse retro-mono fs-body">
             <thead>

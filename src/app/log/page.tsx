@@ -27,19 +27,55 @@ function fmtMonthLabel(ym: string) {
     : `${parseInt(m)}月`
 }
 
+const LOG_STATE_KEY = 'log-state-v1'
+
+type SortKey = 'newest' | 'oldest' | 'best' | 'worst'
+interface PersistedLogState {
+  account?: 'bingx' | 'tradovate'
+  month?: string
+  filter?: string
+  sort?: SortKey
+}
+
 export default function LogPage() {
   const [account, setAccount] = useState<'bingx' | 'tradovate'>('tradovate')
   const [accounts, setAccounts] = useState<Account[]>([])
   const [trades, setTrades] = useState<Trade[]>([])
   const [strategies, setStrategies] = useState<Strategy[]>([])
   const [filter, setFilter] = useState<string>('all')
-  const [sort, setSort] = useState<'newest' | 'oldest' | 'best' | 'worst'>('newest')
+  const [sort, setSort] = useState<SortKey>('newest')
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr)
   const [batchMode, setBatchMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [restored, setRestored] = useState(false)
+
+  // Restore persisted UI state on mount (client-only to avoid hydration mismatch)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOG_STATE_KEY)
+      if (raw) {
+        const s = JSON.parse(raw) as PersistedLogState
+        if (s.account === 'bingx' || s.account === 'tradovate') setAccount(s.account)
+        if (s.month) setSelectedMonth(s.month)
+        if (s.filter) setFilter(s.filter)
+        if (s.sort) setSort(s.sort)
+      }
+    } catch { /* ignore */ }
+    setRestored(true)
+  }, [])
+
+  // Persist whenever the user changes a relevant control
+  useEffect(() => {
+    if (!restored) return
+    try {
+      localStorage.setItem(LOG_STATE_KEY, JSON.stringify({
+        account, month: selectedMonth, filter, sort,
+      }))
+    } catch { /* ignore */ }
+  }, [account, selectedMonth, filter, sort, restored])
 
   useEffect(() => {
     supabase.from('accounts').select('*').then(({ data }) => data && setAccounts(data as Account[]))
@@ -49,8 +85,6 @@ export default function LogPage() {
     const acc = accounts.find(a => a.name === account)
     if (!acc) return
     setShowForm(false)
-    setFilter('all')
-    setSelectedMonth(currentMonthStr())
     supabase.from('strategies').select('*').eq('account_id', acc.id).order('sort_order')
       .then(({ data }) => data && setStrategies(data as Strategy[]))
     supabase.from('trades').select('*, strategies(name)')
