@@ -1,6 +1,6 @@
 import type { Trade, Strategy } from './types'
 
-export type Range = '7d' | '30d' | '90d' | 'ytd' | 'all'
+export type Range = '7d' | '30d' | '90d' | 'ytd' | 'all' | 'custom'
 export type SortKey = 'pnl' | 'winRate' | 'count' | 'pf'
 
 export const RANGE_OPTIONS: { key: Range; label: string }[] = [
@@ -9,6 +9,7 @@ export const RANGE_OPTIONS: { key: Range; label: string }[] = [
   { key: '90d', label: '90 天' },
   { key: 'ytd', label: 'YTD' },
   { key: 'all', label: '全部' },
+  { key: 'custom', label: '自訂' },
 ]
 
 export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
@@ -18,15 +19,40 @@ export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'pf', label: 'PF' },
 ]
 
-export function rangeStartMs(range: Range): number {
+// Convert a YYYY-MM-DD string to a local-date timestamp at start (00:00) or end (23:59:59.999).
+function dateStrToMs(s: string, edge: 'start' | 'end'): number {
+  const [y, m, d] = s.split('-').map(Number)
+  return edge === 'start'
+    ? new Date(y, m - 1, d, 0, 0, 0, 0).getTime()
+    : new Date(y, m - 1, d, 23, 59, 59, 999).getTime()
+}
+
+export interface RangeBounds { start: number; end: number }
+
+export function rangeBoundsMs(
+  range: Range,
+  customFrom?: string,
+  customTo?: string,
+): RangeBounds {
   const now = Date.now()
-  switch (range) {
-    case '7d': return now - 7 * 86400000
-    case '30d': return now - 30 * 86400000
-    case '90d': return now - 90 * 86400000
-    case 'ytd': return new Date(new Date().getFullYear(), 0, 1).getTime()
-    case 'all': return 0
+  if (range === 'custom') {
+    const start = customFrom ? dateStrToMs(customFrom, 'start') : 0
+    const end = customTo ? dateStrToMs(customTo, 'end') : now
+    return { start, end: Math.max(end, start) }
   }
+  let start: number
+  switch (range) {
+    case '7d': start = now - 7 * 86400000; break
+    case '30d': start = now - 30 * 86400000; break
+    case '90d': start = now - 90 * 86400000; break
+    case 'ytd': start = new Date(new Date().getFullYear(), 0, 1).getTime(); break
+    case 'all': start = 0; break
+  }
+  return { start, end: now }
+}
+
+export function rangeStartMs(range: Range): number {
+  return rangeBoundsMs(range).start
 }
 
 // 8-color palette for strategy lines (cycles if more than 8)

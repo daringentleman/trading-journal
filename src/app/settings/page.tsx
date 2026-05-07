@@ -174,7 +174,10 @@ export default function SettingsPage() {
       <div className="md:grid md:grid-cols-2 md:gap-6">
         {/* BingX column */}
         <div>
-          <div className="text-[11px] uppercase tracking-widest mb-3 font-medium" style={{ color: 'var(--accent)' }}>Crypto · BingX</div>
+          <div className="inline-block px-3 py-1.5 mb-3 retro-display fs-meta"
+            style={{ background: 'var(--accent2)', color: '#fff', border: '1.5px solid var(--border)', borderRadius: 4, boxShadow: '2px 2px 0 var(--border)' }}>
+            CRYPTO · BINGX
+          </div>
 
           {/* BingX CSV */}
           <div className="rounded-[10px] p-4 mb-3 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
@@ -196,7 +199,10 @@ export default function SettingsPage() {
 
         {/* Tradovate column */}
         <div>
-          <div className="text-[11px] uppercase tracking-widest mb-3 font-medium" style={{ color: 'var(--accent)' }}>Prop Firm · Tradovate</div>
+          <div className="inline-block px-3 py-1.5 mb-3 retro-display fs-meta"
+            style={{ background: 'var(--accent)', color: 'var(--border)', border: '1.5px solid var(--border)', borderRadius: 4, boxShadow: '2px 2px 0 var(--border)' }}>
+            PROP FIRM · TRADOVATE
+          </div>
 
           {/* Tradovate CSV */}
           <div className="rounded-[10px] p-4 mb-3 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>

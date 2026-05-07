@@ -9,10 +9,19 @@ import EquityChart from '@/components/EquityChart'
 import StrategyCard from '@/components/StrategyCard'
 import StrategyEquityChart from '@/components/StrategyEquityChart'
 import {
-  RANGE_OPTIONS, SORT_OPTIONS, rangeStartMs,
+  RANGE_OPTIONS, SORT_OPTIONS, rangeBoundsMs,
   computeStrategyMetric, sortMetrics,
   type Range, type SortKey,
 } from '@/lib/strategy-stats'
+
+function todayISO(offsetDays = 0): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 
 export default function StatsPage() {
   const [account, setAccount] = useState<'bingx' | 'tradovate'>('tradovate')
@@ -24,6 +33,8 @@ export default function StatsPage() {
   })
 
   const [stratRange, setStratRange] = useState<Range>('30d')
+  const [customFrom, setCustomFrom] = useState<string>(() => todayISO(-30))
+  const [customTo, setCustomTo] = useState<string>(() => todayISO(0))
   const [sortKey, setSortKey] = useState<SortKey>('pnl')
   const [selectedStrategyId, setSelectedStrategyId] = useState<string>('')
   const [chartMode, setChartMode] = useState<'pnl' | 'winRate'>('pnl')
@@ -81,16 +92,20 @@ export default function StatsPage() {
     })
   }, [trades, current])
 
+  const { start: rangeStart, end: rangeEnd } = useMemo(
+    () => rangeBoundsMs(stratRange, customFrom, customTo),
+    [stratRange, customFrom, customTo],
+  )
+
   const strategyMetrics = useMemo(() => {
-    const startMs = rangeStartMs(stratRange)
     const rangeTrades = trades.filter(t => {
       const ts = new Date(t.exit_time ?? t.entry_time ?? t.created_at).getTime()
-      return ts >= startMs
+      return ts >= rangeStart && ts <= rangeEnd
     })
     const metrics = strategies.map((s, i) => computeStrategyMetric(s, rangeTrades, i))
       .filter(m => m.count > 0)
     return sortMetrics(metrics, sortKey)
-  }, [trades, strategies, stratRange, sortKey])
+  }, [trades, strategies, rangeStart, rangeEnd, sortKey])
 
   // Auto-select the top strategy when the list changes (or current selection vanished)
   useEffect(() => {
@@ -189,28 +204,45 @@ export default function StatsPage() {
           <span className="fs-meta retro-display" style={{ color: '#fff' }}>STRATEGY · OVERVIEW</span>
         </div>
 
-        <div className="px-4 py-3 flex items-center justify-between flex-wrap gap-3"
+        <div className="px-4 py-3 flex flex-col gap-3"
           style={{ borderBottom: '1.5px solid var(--border)', background: 'var(--raised)' }}>
-          <div className="flex gap-1.5 flex-wrap">
-            {RANGE_OPTIONS.map(r => (
-              <button key={r.key} onClick={() => setStratRange(r.key)}
-                data-active={stratRange === r.key}
-                className="retro-pill px-3 py-1 fs-meta transition-colors">
-                {r.label}
-              </button>
-            ))}
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex gap-1.5 flex-wrap">
+              {RANGE_OPTIONS.map(r => (
+                <button key={r.key} onClick={() => setStratRange(r.key)}
+                  data-active={stratRange === r.key}
+                  className="retro-pill px-3 py-1 fs-meta transition-colors">
+                  {r.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="fs-meta font-bold" style={{ color: 'var(--muted)' }}>排序</span>
+              <select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}
+                className="px-2 py-1 outline-none fs-meta font-bold cursor-pointer"
+                style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--border)', borderRadius: 4 }}>
+                {SORT_OPTIONS.map(o => (
+                  <option key={o.key} value={o.key}>{o.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="fs-meta font-bold" style={{ color: 'var(--muted)' }}>排序</span>
-            <select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}
-              className="px-2 py-1 outline-none fs-meta font-bold cursor-pointer"
-              style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--border)', borderRadius: 4 }}>
-              {SORT_OPTIONS.map(o => (
-                <option key={o.key} value={o.key}>{o.label}</option>
-              ))}
-            </select>
-          </div>
+          {stratRange === 'custom' && (
+            <div className="flex items-center gap-2 flex-wrap fs-meta font-bold">
+              <span style={{ color: 'var(--muted)' }}>從</span>
+              <input type="date" value={customFrom} max={customTo}
+                onChange={e => setCustomFrom(e.target.value)}
+                className="px-2 py-1 outline-none cursor-pointer"
+                style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--border)', borderRadius: 4 }} />
+              <span style={{ color: 'var(--muted)' }}>到</span>
+              <input type="date" value={customTo} min={customFrom} max={todayISO(0)}
+                onChange={e => setCustomTo(e.target.value)}
+                className="px-2 py-1 outline-none cursor-pointer"
+                style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--border)', borderRadius: 4 }} />
+            </div>
+          )}
         </div>
 
         <div className="p-4" style={{ borderBottom: '1.5px solid var(--border)' }}>
@@ -256,7 +288,7 @@ export default function StatsPage() {
               <span style={{ color: 'var(--muted)' }}>· {selectedMetric.count} 筆</span>
             </div>
           )}
-          <StrategyEquityChart metric={selectedMetric} rangeStartMs={rangeStartMs(stratRange)} mode={chartMode} />
+          <StrategyEquityChart metric={selectedMetric} rangeStartMs={rangeStart} rangeEndMs={rangeEnd} mode={chartMode} />
         </div>
 
         <div className="p-4">

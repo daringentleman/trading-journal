@@ -8,6 +8,7 @@ export type ChartMode = 'pnl' | 'winRate'
 interface Props {
   metric: StrategyMetric | null
   rangeStartMs: number
+  rangeEndMs?: number
   mode?: ChartMode
 }
 
@@ -45,22 +46,28 @@ function smoothPath(pts: { x: number; y: number }[]): string {
     const p2 = pts[i + 1]
     const p3 = pts[Math.min(pts.length - 1, i + 2)]
     let c1x = p1.x + (p2.x - p0.x) / t
-    const c1y = p1.y + (p2.y - p0.y) / t
+    let c1y = p1.y + (p2.y - p0.y) / t
     let c2x = p2.x - (p3.x - p1.x) / t
-    const c2y = p2.y - (p3.y - p1.y) / t
-    // Clamp control points' X to the current segment so the curve never
-    // folds back on itself when X spacing is uneven (e.g. trade-day clusters
-    // followed by a long flat tail to "now").
+    let c2y = p2.y - (p3.y - p1.y) / t
+    // X clamp: avoid axis folding with uneven X spacing.
+    // Y clamp: keep each segment monotone so transitions into a flat
+    // tail (last trade → "now") have no overshoot/kink.
     if (c1x < p1.x) c1x = p1.x
     if (c1x > p2.x) c1x = p2.x
     if (c2x < p1.x) c2x = p1.x
     if (c2x > p2.x) c2x = p2.x
+    const yMin = Math.min(p1.y, p2.y)
+    const yMax = Math.max(p1.y, p2.y)
+    if (c1y < yMin) c1y = yMin
+    if (c1y > yMax) c1y = yMax
+    if (c2y < yMin) c2y = yMin
+    if (c2y > yMax) c2y = yMax
     d += ` C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`
   }
   return d
 }
 
-export default function StrategyEquityChart({ metric, rangeStartMs, mode = 'pnl' }: Props) {
+export default function StrategyEquityChart({ metric, rangeStartMs, rangeEndMs, mode = 'pnl' }: Props) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
@@ -83,8 +90,10 @@ export default function StrategyEquityChart({ metric, rangeStartMs, mode = 'pnl'
     )
   }
 
+  // Right edge of the chart: custom range ⇒ user-picked end, otherwise "now".
+  const endMs = rangeEndMs ?? Date.now()
+
   // Aggregate per day: keep last value of each calendar day
-  const nowMs = Date.now()
   const byDay = new Map<string, number>()
   for (const p of sourceCurve.slice(1)) {
     const k = new Date(p.time).toLocaleDateString('en-CA')
@@ -94,9 +103,9 @@ export default function StrategyEquityChart({ metric, rangeStartMs, mode = 'pnl'
 
   // Per-day delta from previous day
   const points: { time: number; value: number; delta: number }[] = [
-    { time: rangeStartMs, value: mode === 'pnl' ? 0 : 0, delta: 0 },
+    { time: rangeStartMs, value: 0, delta: 0 },
   ]
-  let prev = mode === 'pnl' ? 0 : 0
+  let prev = 0
   for (const k of sortedKeys) {
     const v = byDay.get(k)!
     const [y, m, d] = k.split('-').map(Number)
@@ -108,8 +117,8 @@ export default function StrategyEquityChart({ metric, rangeStartMs, mode = 'pnl'
     prev = v
   }
   const lastVal = points[points.length - 1].value
-  if (points[points.length - 1].time < nowMs) {
-    points.push({ time: nowMs, value: lastVal, delta: 0 })
+  if (points[points.length - 1].time < endMs) {
+    points.push({ time: endMs, value: lastVal, delta: 0 })
   }
 
   const allValues = points.map(p => p.value)
@@ -128,7 +137,7 @@ export default function StrategyEquityChart({ metric, rangeStartMs, mode = 'pnl'
   const rng = maxV - minV || 1
 
   const minT = rangeStartMs
-  const maxT = Math.max(nowMs, ...points.map(p => p.time))
+  const maxT = Math.max(endMs, ...points.map(p => p.time))
   const rngT = maxT - minT || 1
 
   const toX = (t: number) => ML + ((t - minT) / rngT) * CW

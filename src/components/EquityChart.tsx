@@ -8,13 +8,30 @@ interface Props {
   initialCapital: number
 }
 
-type Range = '7d' | '30d' | '60d' | '90d'
-const RANGES: { key: Range; label: string; days: number }[] = [
+type Range = '7d' | '30d' | '60d' | '90d' | 'custom'
+const RANGES: { key: Range; label: string; days?: number }[] = [
   { key: '7d',  label: '7天',  days: 7 },
   { key: '30d', label: '30天', days: 30 },
   { key: '60d', label: '60天', days: 60 },
   { key: '90d', label: '90天', days: 90 },
+  { key: 'custom', label: '自訂' },
 ]
+
+function todayISO(offsetDays = 0): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function dateStrToMs(s: string, edge: 'start' | 'end'): number {
+  const [y, m, d] = s.split('-').map(Number)
+  return edge === 'start'
+    ? new Date(y, m - 1, d, 0, 0, 0, 0).getTime()
+    : new Date(y, m - 1, d, 23, 59, 59, 999).getTime()
+}
 
 function fmtAxis(n: number): string {
   return '$' + Math.round(n).toLocaleString('en-US')
@@ -32,8 +49,10 @@ function fmtDelta(delta: number): string {
 }
 
 // Catmull-Rom → cubic Bezier smoothing. Tension 6 = soft curve, no overshoot in equity data.
-// Control points' X are clamped to the segment range to prevent X-axis folding
-// when X spacing is uneven (e.g. trade-day clusters with long flat tail).
+// Control points are clamped on BOTH axes to the segment range:
+//   - X clamp prevents axis folding when X spacing is uneven.
+//   - Y clamp keeps each segment monotone in Y, eliminating overshoot when the
+//     curve approaches/leaves a horizontal section (e.g. last trade → "now" tail).
 function smoothPath(pts: { x: number; y: number }[]): string {
   if (pts.length < 2) return ''
   if (pts.length === 2) return `M${pts[0].x},${pts[0].y} L${pts[1].x},${pts[1].y}`
@@ -45,13 +64,19 @@ function smoothPath(pts: { x: number; y: number }[]): string {
     const p2 = pts[i + 1]
     const p3 = pts[Math.min(pts.length - 1, i + 2)]
     let c1x = p1.x + (p2.x - p0.x) / t
-    const c1y = p1.y + (p2.y - p0.y) / t
+    let c1y = p1.y + (p2.y - p0.y) / t
     let c2x = p2.x - (p3.x - p1.x) / t
-    const c2y = p2.y - (p3.y - p1.y) / t
+    let c2y = p2.y - (p3.y - p1.y) / t
     if (c1x < p1.x) c1x = p1.x
     if (c1x > p2.x) c1x = p2.x
     if (c2x < p1.x) c2x = p1.x
     if (c2x > p2.x) c2x = p2.x
+    const yMin = Math.min(p1.y, p2.y)
+    const yMax = Math.max(p1.y, p2.y)
+    if (c1y < yMin) c1y = yMin
+    if (c1y > yMax) c1y = yMax
+    if (c2y < yMin) c2y = yMin
+    if (c2y > yMax) c2y = yMax
     d += ` C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`
   }
   return d
@@ -59,12 +84,24 @@ function smoothPath(pts: { x: number; y: number }[]): string {
 
 export default function EquityChart({ trades, initialCapital }: Props) {
   const [range, setRange] = useState<Range>('90d')
+  const [customFrom, setCustomFrom] = useState<string>(() => todayISO(-30))
+  const [customTo, setCustomTo] = useState<string>(() => todayISO(0))
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
-  const rangeDays = RANGES.find(r => r.key === range)!.days
-  const cutoffMs = Date.now() - rangeDays * 86400000
+  // Range bounds: custom uses user-picked dates, otherwise lookback from now.
+  const { startMs, endMs, isCustom } = (() => {
+    if (range === 'custom') {
+      return {
+        startMs: dateStrToMs(customFrom, 'start'),
+        endMs: dateStrToMs(customTo, 'end'),
+        isCustom: true,
+      }
+    }
+    const days = RANGES.find(r => r.key === range)!.days!
+    return { startMs: Date.now() - days * 86400000, endMs: Date.now(), isCustom: false }
+  })()
 
   // Sort all trades by exit/entry time
   const allSorted = [...trades]
@@ -76,12 +113,13 @@ export default function EquityChart({ trades, initialCapital }: Props) {
 
   // Equity at start of range = initialCapital + PnL from all prior trades
   const startEquity = initialCapital + allSorted
-    .filter(t => new Date(t.exit_time ?? t.entry_time!).getTime() < cutoffMs)
+    .filter(t => new Date(t.exit_time ?? t.entry_time!).getTime() < startMs)
     .reduce((s, t) => s + (t.pnl ?? 0), 0)
 
-  const rangeTrades = allSorted.filter(
-    t => new Date(t.exit_time ?? t.entry_time!).getTime() >= cutoffMs
-  )
+  const rangeTrades = allSorted.filter(t => {
+    const ts = new Date(t.exit_time ?? t.entry_time!).getTime()
+    return ts >= startMs && ts <= endMs
+  })
 
   // Daily PnL map
   const dailyPnl: Record<string, number> = {}
@@ -102,7 +140,8 @@ export default function EquityChart({ trades, initialCapital }: Props) {
     }
     equity += t.pnl ?? 0
   }
-  points.push({ day: 'now', equity, delta: 0 })
+  // Right-edge label: 'now' for relative ranges, the picked end date for custom.
+  points.push({ day: isCustom ? customTo : 'now', equity, delta: 0 })
 
   // Layout
   const ML = 46
@@ -173,7 +212,7 @@ export default function EquityChart({ trades, initialCapital }: Props) {
   return (
     <div>
       {/* Range selector */}
-      <div className="flex gap-1.5 mb-3">
+      <div className="flex gap-1.5 mb-3 flex-wrap">
         {RANGES.map(r => (
           <button key={r.key} onClick={() => { setRange(r.key); setHoverIdx(null) }}
             data-active={range === r.key}
@@ -182,6 +221,21 @@ export default function EquityChart({ trades, initialCapital }: Props) {
           </button>
         ))}
       </div>
+
+      {range === 'custom' && (
+        <div className="flex items-center gap-2 flex-wrap fs-meta font-bold mb-3">
+          <span style={{ color: 'var(--muted)' }}>從</span>
+          <input type="date" value={customFrom} max={customTo}
+            onChange={e => { setCustomFrom(e.target.value); setHoverIdx(null) }}
+            className="px-2 py-1 outline-none cursor-pointer"
+            style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--border)', borderRadius: 4 }} />
+          <span style={{ color: 'var(--muted)' }}>到</span>
+          <input type="date" value={customTo} min={customFrom} max={todayISO(0)}
+            onChange={e => { setCustomTo(e.target.value); setHoverIdx(null) }}
+            className="px-2 py-1 outline-none cursor-pointer"
+            style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--border)', borderRadius: 4 }} />
+        </div>
+      )}
 
       {!chartContent ? (
         <div className="h-20 flex items-center justify-center text-[12px]" style={{ color: 'var(--muted)' }}>

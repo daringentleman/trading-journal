@@ -139,10 +139,12 @@ body > div.flex { position: relative; z-index: 1; }
 .retro-pill[data-active='true'] {
   background: var(--accent);
   color: var(--border);
+  box-shadow: 2px 2px 0 var(--border);
 }
 .retro-pill-orange[data-active='true'] {
   background: var(--accent2);
   color: #fff;
+  box-shadow: 2px 2px 0 var(--border);
 }
 
 /* Yellow CTA */
