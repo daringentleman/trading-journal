@@ -32,7 +32,7 @@ export default function Nav() {
                 color: 'var(--border)',
               }}
             >
-              <span className="text-xl leading-none">{l.icon}</span>
+              <span className="inline-flex justify-center items-center w-6 text-xl leading-none">{l.icon}</span>
               {l.label}
             </Link>
           )
@@ -65,7 +65,7 @@ export default function Nav() {
                   borderRadius: 4,
                 }}
               >
-                <span className="text-lg leading-none">{l.icon}</span>
+                <span className="inline-flex justify-center items-center w-5 text-lg leading-none">{l.icon}</span>
                 {l.label}
               </Link>
             )

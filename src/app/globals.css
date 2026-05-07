@@ -130,7 +130,7 @@ body > div.flex { position: relative; z-index: 1; }
 /* Pill button (active = yellow / orange) */
 .retro-pill {
   border: 1.5px solid var(--border);
-  background: transparent;
+  background: var(--surface);
   color: var(--border);
   border-radius: 999px;
   font-weight: 700;

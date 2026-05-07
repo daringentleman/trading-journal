@@ -175,7 +175,7 @@ export default function SettingsPage() {
         {/* BingX column */}
         <div>
           <div className="inline-block px-3 py-1.5 mb-3 retro-display fs-meta"
-            style={{ background: 'var(--accent2)', color: '#fff', border: '1.5px solid var(--border)', borderRadius: 4, boxShadow: '2px 2px 0 var(--border)' }}>
+            style={{ background: 'var(--accent)', color: 'var(--border)', border: '1.5px solid var(--border)', borderRadius: 4, boxShadow: '2px 2px 0 var(--border)' }}>
             CRYPTO · BINGX
           </div>
 
