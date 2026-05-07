@@ -24,19 +24,60 @@ function isCloseFill(f: Fill) {
     (f.side === 'BUY' && f.positionSide === 'SHORT')
 }
 
-async function fetchFills(secret: string, apiKey: string): Promise<Fill[]> {
-  const now = new Date()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
-  const qs = sign({ timestamp: Date.now().toString(), recvWindow: '5000', startTime: startOfMonth.toString(), limit: '100' }, secret)
-  const res = await fetch(`${BINGX_BASE}/openApi/swap/v2/trade/fillHistory?${qs}`, {
-    headers: { 'X-BX-APIKEY': apiKey },
-  })
-  if (!res.ok) return []
-  const json = await res.json()
-  return json?.data?.fill_history_orders ?? []
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
+
+// Slide a 7-day window from startTime → now, paginating within each window.
+// BingX fillHistory caps at 1000 fills per request and ~7d span per query.
+async function fetchAllFills(secret: string, apiKey: string, startTime: number): Promise<Fill[]> {
+  const all: Fill[] = []
+  const seen = new Set<string>()
+  const now = Date.now()
+  let windowStart = startTime
+  const MAX_WINDOWS = 100
+  const MAX_PAGES_PER_WINDOW = 20
+
+  for (let w = 0; w < MAX_WINDOWS && windowStart < now; w++) {
+    const windowEnd = Math.min(windowStart + SEVEN_DAYS_MS, now)
+    let cursor = windowStart
+
+    for (let p = 0; p < MAX_PAGES_PER_WINDOW; p++) {
+      const qs = sign({
+        timestamp: Date.now().toString(),
+        recvWindow: '5000',
+        startTime: cursor.toString(),
+        endTime: windowEnd.toString(),
+        limit: '1000',
+      }, secret)
+      const res = await fetch(`${BINGX_BASE}/openApi/swap/v2/trade/fillHistory?${qs}`, {
+        headers: { 'X-BX-APIKEY': apiKey },
+      })
+      if (!res.ok) {
+        console.warn(`[bingx-sync] fetch failed: ${res.status} ${res.statusText}`)
+        break
+      }
+      const json = await res.json()
+      const batch: Fill[] = json?.data?.fill_history_orders ?? []
+      if (!batch.length) break
+
+      for (const f of batch) {
+        const k = f.tradeId || f.orderId
+        if (k && !seen.has(k)) { seen.add(k); all.push(f) }
+      }
+
+      if (batch.length < 1000) break
+      const latestMs = Math.max(...batch.map(f => new Date(f.filledTime).getTime()))
+      if (latestMs <= cursor) break
+      cursor = latestMs
+    }
+
+    windowStart = windowEnd + 1
+  }
+
+  console.log(`[bingx-sync] fetched ${all.length} fills from ${new Date(startTime).toISOString()} → now`)
+  return all
 }
 
-export async function POST() {
+async function syncHandler() {
   const apiKey = process.env.BINGX_API_KEY
   const secret = process.env.BINGX_SECRET_KEY
 
@@ -52,7 +93,21 @@ export async function POST() {
   const { data: acc } = await sb.from('accounts').select('id').eq('name', 'bingx').single()
   if (!acc) return Response.json({ message: '找不到 BingX 帳戶' }, { status: 500 })
 
-  const fills = await fetchFills(secret, apiKey)
+  // Start from latest known exit_time minus 7d buffer (covers cross-window opens).
+  // First-time sync (no trades yet) falls back to 30 days ago.
+  const { data: lastTrade } = await sb.from('trades')
+    .select('exit_time')
+    .eq('account_id', acc.id)
+    .not('exit_time', 'is', null)
+    .order('exit_time', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const startTime = lastTrade?.exit_time
+    ? new Date(lastTrade.exit_time).getTime() - SEVEN_DAYS_MS
+    : Date.now() - 30 * 24 * 60 * 60 * 1000
+
+  const fills = await fetchAllFills(secret, apiKey, startTime)
 
   const opens = fills.filter(isOpenFill).sort((a, b) =>
     new Date(a.filledTime).getTime() - new Date(b.filledTime).getTime()
@@ -83,8 +138,11 @@ export async function POST() {
       usedOpenOrderIds.add(o.orderId)
     }
 
-    // Use orderId (= Excel Order No.) as external_id — matches xlsx import format exactly.
-    // upsert will skip this row if it was already imported via xlsx.
+    // realized PnL = price PnL + commissions (commissions are negative in BingX API)
+    const totalCommission =
+      parseFloat(close.commission ?? '0') +
+      matchingOpens.reduce((s, o) => s + parseFloat(o.commission ?? '0'), 0)
+
     rows.push({
       account_id: acc.id,
       external_id: `xlsx-${close.orderId}`,
@@ -95,7 +153,7 @@ export async function POST() {
       entry_time: new Date(matchingOpens[0].filledTime).toISOString(),
       exit_time: new Date(close.filledTime).toISOString(),
       quantity: parseFloat(close.qty),
-      pnl: Math.round(parseFloat(close.realisedPNL) * 100) / 100,
+      pnl: parseFloat(close.realisedPNL) + totalCommission,
     })
   }
 
@@ -106,15 +164,43 @@ export async function POST() {
   )
 
   if (!validRows.length) {
-    return Response.json({ message: '沒有新交易', added: 0 })
+    return Response.json({
+      message: '沒有可配對的交易',
+      added: 0,
+      fillsScanned: fills.length,
+      startTime: new Date(startTime).toISOString(),
+    })
   }
 
-  // Incremental upsert: existing xlsx-{orderId} records are skipped automatically
-  const { data: inserted, error } = await sb.from('trades')
-    .upsert(validRows, { onConflict: 'external_id', ignoreDuplicates: true })
-    .select()
+  // Compute newCount by diffing existing external_ids before upsert.
+  const incomingIds = validRows.map(r => r.external_id as string)
+  const { data: existing } = await sb.from('trades')
+    .select('external_id')
+    .in('external_id', incomingIds)
+  const existingIds = new Set((existing ?? []).map(r => r.external_id))
+  const newCount = incomingIds.filter(id => !existingIds.has(id)).length
+
+  // Upsert: update price/pnl fields on conflict, preserve user-added notes/strategy/rr
+  const { error } = await sb.from('trades')
+    .upsert(validRows, { onConflict: 'external_id', ignoreDuplicates: false })
   if (error) return Response.json({ message: `寫入失敗: ${error.message}` }, { status: 500 })
 
-  const newCount = inserted?.length ?? 0
-  return Response.json({ message: `同步完成，新增 ${newCount} 筆`, added: newCount })
+  console.log(`[bingx-sync] fills=${fills.length} matched=${validRows.length} new=${newCount}`)
+  return Response.json({
+    message: `同步完成，新增 ${newCount} 筆（掃描 ${fills.length} 筆 fills，配對 ${validRows.length} 筆交易）`,
+    added: newCount,
+    fillsScanned: fills.length,
+    tradesMatched: validRows.length,
+    startTime: new Date(startTime).toISOString(),
+  })
+}
+
+export function POST() { return syncHandler() }
+
+export function GET(request: Request) {
+  const auth = request.headers.get('authorization')
+  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    return Response.json({ message: 'Unauthorized' }, { status: 401 })
+  }
+  return syncHandler()
 }

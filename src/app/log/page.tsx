@@ -38,6 +38,8 @@ export default function LogPage() {
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr)
+  const [batchMode, setBatchMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     supabase.from('accounts').select('*').then(({ data }) => data && setAccounts(data as Account[]))
@@ -82,6 +84,44 @@ export default function LogPage() {
     setForm(p => ({ ...p, [k]: v }))
   }
 
+  function applyStrategyLocal(ids: Set<string>, strategyId: string | null) {
+    const target = strategyId ? strategies.find(s => s.id === strategyId) : undefined
+    setTrades(prev => prev.map(t => ids.has(t.id)
+      ? { ...t, strategy_id: strategyId ?? undefined, strategies: target ? { ...target } : undefined }
+      : t,
+    ))
+  }
+
+  async function handleAssignSingle(tradeId: string, strategyId: string | null) {
+    const { error } = await supabase.from('trades')
+      .update({ strategy_id: strategyId }).eq('id', tradeId)
+    if (!error) applyStrategyLocal(new Set([tradeId]), strategyId)
+  }
+
+  async function handleBatchAssign(strategyId: string | null) {
+    if (!selectedIds.size) return
+    const ids = Array.from(selectedIds)
+    const { error } = await supabase.from('trades')
+      .update({ strategy_id: strategyId }).in('id', ids)
+    if (!error) {
+      applyStrategyLocal(selectedIds, strategyId)
+      setSelectedIds(new Set())
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) setSelectedIds(new Set())
+    else setSelectedIds(new Set(filtered.map(t => t.id)))
+  }
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
     const acc = accounts.find(a => a.name === 'tradovate')
@@ -109,9 +149,23 @@ export default function LogPage() {
 
   return (
     <div className="px-4 py-5 md:px-8 md:py-7">
-      <div className="mb-5">
-        <h1 className="text-[17px] font-semibold">交易記錄</h1>
-        <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>{filtered.length} 筆</p>
+      <div className="mb-5 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-[17px] font-semibold">交易記錄</h1>
+          <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>{filtered.length} 筆</p>
+        </div>
+        <button
+          onClick={() => { setBatchMode(b => !b); setSelectedIds(new Set()) }}
+          disabled={strategies.length === 0}
+          title={strategies.length === 0 ? '請先到設定頁建立策略' : ''}
+          className="px-3.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            background: batchMode ? 'var(--accent)' : 'var(--surface)',
+            borderColor: batchMode ? 'var(--accent)' : 'var(--accent)',
+            color: batchMode ? '#08080d' : 'var(--accent)',
+          }}>
+          {batchMode ? '✕ 結束批次' : '☑ 批次標策略'}
+        </button>
       </div>
 
       {/* Account tabs */}
@@ -164,8 +218,8 @@ export default function LogPage() {
         )}
       </div>
 
-      {/* Sort bar */}
-      <div className="flex items-center gap-2 mb-4">
+      {/* Sort bar + batch toggle */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
         <span className="text-[11px]" style={{ color: 'var(--muted)' }}>排序</span>
         <div className="flex gap-1 flex-wrap">
           {([
@@ -185,7 +239,42 @@ export default function LogPage() {
             </button>
           ))}
         </div>
+
       </div>
+
+      {/* Batch toolbar */}
+      {batchMode && (
+        <div className="rounded-[10px] p-3 mb-4 border flex items-center gap-2 flex-wrap"
+          style={{ background: 'var(--raised)', borderColor: 'var(--border2)' }}>
+          <button onClick={toggleSelectAll}
+            className="text-[11px] px-2.5 py-1 rounded-md border"
+            style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text)' }}>
+            {selectedIds.size === filtered.length && filtered.length > 0 ? '取消全選' : '全選本頁'}
+          </button>
+          <span className="text-[11px]" style={{ color: 'var(--muted)' }}>已選 {selectedIds.size} 筆</span>
+          <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px]" style={{ color: 'var(--muted)' }}>套用：</span>
+            {strategies.map(s => (
+              <button key={s.id} onClick={() => handleBatchAssign(s.id)}
+                disabled={selectedIds.size === 0}
+                className="text-[11px] px-2.5 py-1 rounded-md border disabled:opacity-40"
+                style={{
+                  background: 'rgba(200,155,60,.12)',
+                  borderColor: 'rgba(200,155,60,.25)',
+                  color: 'var(--accent)',
+                }}>
+                {s.name}
+              </button>
+            ))}
+            <button onClick={() => handleBatchAssign(null)}
+              disabled={selectedIds.size === 0}
+              className="text-[11px] px-2.5 py-1 rounded-md border disabled:opacity-40"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--muted)' }}>
+              清除
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Manual add form */}
       {showForm && account === 'tradovate' && (
@@ -261,7 +350,28 @@ export default function LogPage() {
             : `${fmtMonthLabel(selectedMonth)} 此策略無交易記錄`}
         </div>
       ) : (
-        filtered.map(t => <TradeItem key={t.id} trade={t} />)
+        filtered.map(t => batchMode ? (
+          <div key={t.id}
+            onClick={() => toggleSelect(t.id)}
+            className="cursor-pointer relative"
+            style={{
+              borderRadius: '10px',
+              outline: selectedIds.has(t.id) ? '2px solid var(--accent)' : 'none',
+              outlineOffset: '-1px',
+            }}>
+            {selectedIds.has(t.id) && (
+              <div className="absolute top-2.5 right-2.5 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold z-10"
+                style={{ background: 'var(--accent)', color: '#08080d' }}>✓</div>
+            )}
+            <div className="pointer-events-none">
+              <TradeItem trade={t} />
+            </div>
+          </div>
+        ) : (
+          <TradeItem key={t.id} trade={t}
+            strategies={strategies}
+            onAssignStrategy={handleAssignSingle} />
+        ))
       )}
     </div>
   )

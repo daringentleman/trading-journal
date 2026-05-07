@@ -1,10 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Trade, Account, Strategy } from '@/lib/types'
 import { fmtPnl } from '@/lib/types'
 import EquityChart from '@/components/EquityChart'
+import StrategyCard from '@/components/StrategyCard'
+import StrategyEquityChart from '@/components/StrategyEquityChart'
+import {
+  RANGE_OPTIONS, SORT_OPTIONS, rangeStartMs,
+  computeStrategyMetric, sortMetrics,
+  type Range, type SortKey,
+} from '@/lib/strategy-stats'
 
 export default function StatsPage() {
   const [account, setAccount] = useState<'bingx' | 'tradovate'>('tradovate')
@@ -14,6 +21,9 @@ export default function StatsPage() {
   const [month, setMonth] = useState(() => {
     const n = new Date(); return { y: n.getFullYear(), m: n.getMonth() }
   })
+
+  const [stratRange, setStratRange] = useState<Range>('30d')
+  const [sortKey, setSortKey] = useState<SortKey>('pnl')
 
   const current = accounts.find(a => a.name === account)
 
@@ -31,17 +41,17 @@ export default function StatsPage() {
       .then(({ data }) => data && setTrades(data as Trade[]))
   }, [account, accounts])
 
+  // Month-scoped summary (top of page)
   const monthTrades = trades.filter(t => {
     const d = new Date(t.entry_time ?? t.created_at)
     return d.getFullYear() === month.y && d.getMonth() === month.m
   })
-
   const monthPnl = monthTrades.reduce((s, t) => s + (t.pnl ?? 0), 0)
   const wins = monthTrades.filter(t => (t.pnl ?? 0) > 0)
   const winRate = monthTrades.length ? Math.round((wins.length / monthTrades.length) * 100) : 0
 
-  // Monthly history for compound table
-  const monthlyData = (() => {
+  // Monthly history table
+  const monthlyData = useMemo(() => {
     const cap = current?.initial_capital ?? 10000
     const grouped: Record<string, number> = {}
     for (const t of trades) {
@@ -50,33 +60,32 @@ export default function StatsPage() {
       grouped[key] = (grouped[key] ?? 0) + (t.pnl ?? 0)
     }
     return Object.entries(grouped).sort().map(([key, pnl]) => {
-      const [y, m] = key.split('-')
+      const m = key.split('-')[1]
       return { label: `${m}月`, pnl, initial: cap }
     })
-  })()
+  }, [trades, current])
 
-  // Strategy stats
-  const stratStats = strategies.map(s => {
-    const st = monthTrades.filter(t => t.strategies?.name === s.name)
-    const w = st.filter(t => (t.pnl ?? 0) > 0)
-    const rr = st.filter(t => t.rr_ratio)
-    return {
-      name: s.name,
-      count: st.length,
-      winRate: st.length ? Math.round((w.length / st.length) * 100) : 0,
-      avgRR: rr.length ? rr.reduce((s, t) => s + (t.rr_ratio ?? 0), 0) / rr.length : 0,
-    }
-  }).filter(s => s.count > 0)
+  // Strategy metrics — filtered to chosen range
+  const strategyMetrics = useMemo(() => {
+    const startMs = rangeStartMs(stratRange)
+    const rangeTrades = trades.filter(t => {
+      const ts = new Date(t.exit_time ?? t.entry_time ?? t.created_at).getTime()
+      return ts >= startMs
+    })
+    const metrics = strategies.map((s, i) => computeStrategyMetric(s, rangeTrades, i))
+      .filter(m => m.count > 0)
+    return sortMetrics(metrics, sortKey)
+  }, [trades, strategies, stratRange, sortKey])
 
   const monthLabel = `${month.y}年${month.m + 1}月`
 
   return (
     <div className="px-4 py-5 md:px-8 md:py-7">
-      {/* Header + account tabs + month nav */}
       <div className="mb-5 flex items-baseline gap-3">
         <h1 className="text-[17px] font-semibold">統計</h1>
       </div>
 
+      {/* Account + month nav + monthly summary */}
       <div className="md:flex md:items-center md:gap-4 md:mb-4">
         <div className="flex gap-1.5 p-1 rounded-lg mb-3 md:mb-0 md:w-56 border shrink-0" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
           {(['tradovate', 'bingx'] as const).map(name => (
@@ -88,7 +97,6 @@ export default function StatsPage() {
           ))}
         </div>
 
-        {/* Month nav */}
         <div className="flex items-center justify-between mb-4 md:mb-0 md:gap-2">
           <button onClick={() => setMonth(p => { const d = new Date(p.y, p.m - 1); return { y: d.getFullYear(), m: d.getMonth() } })}
             className="text-[18px] px-2" style={{ color: 'var(--muted)' }}>‹</button>
@@ -97,7 +105,6 @@ export default function StatsPage() {
             className="text-[18px] px-2" style={{ color: 'var(--muted)' }}>›</button>
         </div>
 
-        {/* Summary inline on desktop */}
         <div className="hidden md:flex gap-2 flex-1">
           {[
             { label: '損益', val: fmtPnl(monthPnl), color: monthPnl >= 0 ? 'var(--profit)' : 'var(--loss)' },
@@ -112,7 +119,7 @@ export default function StatsPage() {
         </div>
       </div>
 
-      {/* Summary — mobile only */}
+      {/* Mobile summary */}
       <div className="grid grid-cols-3 gap-2 mb-3 md:hidden">
         {[
           { label: '損益', val: fmtPnl(monthPnl), color: monthPnl >= 0 ? 'var(--profit)' : 'var(--loss)' },
@@ -126,51 +133,73 @@ export default function StatsPage() {
         ))}
       </div>
 
-      {/* Desktop: chart left | strategy right */}
-      <div className="md:grid md:grid-cols-[1fr_320px] md:gap-4 md:items-start mb-3">
-        {/* Equity chart */}
-        <div className="rounded-[10px] p-4 mb-3 md:mb-0 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-          <div className="text-[10px] uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>資產走勢</div>
-          <EquityChart trades={trades} initialCapital={current?.initial_capital ?? 10000} />
+      {/* Main equity chart */}
+      <div className="rounded-[10px] p-4 mb-5 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+        <div className="text-[10px] uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>資產走勢</div>
+        <EquityChart trades={trades} initialCapital={current?.initial_capital ?? 10000} />
+      </div>
+
+      {/* ===== Strategy overview ===== */}
+      <div className="mb-5">
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+          <div className="text-[10px] uppercase tracking-widest" style={{ color: 'var(--muted)' }}>策略總覽</div>
+
+          {/* Range tabs */}
+          <div className="flex gap-1.5">
+            {RANGE_OPTIONS.map(r => (
+              <button key={r.key} onClick={() => setStratRange(r.key)}
+                className="px-2.5 py-0.5 rounded-full text-[11px] border transition-colors"
+                style={{
+                  background: stratRange === r.key ? 'var(--raised)' : 'transparent',
+                  borderColor: stratRange === r.key ? 'var(--border2)' : 'var(--border)',
+                  color: stratRange === r.key ? 'var(--text)' : 'var(--muted)',
+                }}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Sort selector */}
+          <div className="flex items-center gap-1.5 text-[11px]">
+            <span style={{ color: 'var(--muted)' }}>排序</span>
+            <select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}
+              className="rounded-md px-2 py-1 border outline-none"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text)' }}>
+              {SORT_OPTIONS.map(o => (
+                <option key={o.key} value={o.key}>{o.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {/* Strategy cards */}
-        {stratStats.length > 0 ? (
-          <div>
-            <div className="text-[10px] uppercase tracking-widest mb-2" style={{ color: 'var(--muted)' }}>策略表現</div>
-            <div className="grid grid-cols-2 md:grid-cols-1 gap-2">
-              {stratStats.map(s => (
-                <div key={s.name} className="rounded-[10px] p-3 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-                  <div className="text-[13px] font-medium mb-2.5">{s.name}</div>
-                  <div className="flex justify-between mb-2">
-                    <div className="text-center">
-                      <div className="text-[17px] font-semibold" style={{ color: 'var(--accent)' }}>{s.winRate}%</div>
-                      <div className="text-[10px]" style={{ color: 'var(--muted)' }}>勝率</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-[17px] font-semibold">{s.count}</div>
-                      <div className="text-[10px]" style={{ color: 'var(--muted)' }}>次數</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-[17px] font-semibold" style={{ color: 'var(--accent)' }}>
-                        {s.avgRR > 0 ? s.avgRR.toFixed(1) : '—'}
-                      </div>
-                      <div className="text-[10px]" style={{ color: 'var(--muted)' }}>RR</div>
-                    </div>
-                  </div>
-                  <div className="h-0.5 rounded" style={{ background: 'var(--raised)' }}>
-                    <div className="h-full rounded" style={{ width: `${s.winRate}%`, background: 'var(--accent)' }} />
-                  </div>
+        {/* Multi-strategy equity chart */}
+        <div className="rounded-[10px] p-4 mb-3 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+          {strategyMetrics.length > 0 && (
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mb-3">
+              {strategyMetrics.map(m => (
+                <div key={m.id} className="flex items-center gap-1.5 text-[11px]">
+                  <span className="w-2 h-2 rounded-full" style={{ background: m.color }} />
+                  <span style={{ color: 'var(--muted)' }}>{m.name}</span>
                 </div>
               ))}
             </div>
+          )}
+          <StrategyEquityChart metrics={strategyMetrics} rangeStartMs={rangeStartMs(stratRange)} />
+        </div>
+
+        {/* Strategy cards grid */}
+        {strategyMetrics.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {strategyMetrics.map(m => <StrategyCard key={m.id} metric={m} />)}
           </div>
         ) : (
-          <div className="hidden md:block" />
+          <div className="rounded-[10px] p-6 text-center text-[12px] border" style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--muted)' }}>
+            此時間範圍內無策略資料
+          </div>
         )}
       </div>
 
-      {/* Monthly compound table — full width */}
+      {/* Monthly compound table */}
       {monthlyData.length > 0 && (
         <div className="rounded-[10px] p-4 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
           <div className="text-[10px] uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>月度損益追蹤</div>

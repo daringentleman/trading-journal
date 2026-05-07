@@ -52,14 +52,16 @@ export async function POST(request: Request) {
       const closeTime = new Date(close['Time(UTC+8)']).getTime()
       const pair = (close['Pair'] ?? '').trim()
 
-      const match = opens.find(({ row: open, idx }) => {
+      const candidates = opens.filter(({ row: open, idx }) => {
         if (usedOpens.has(idx)) return false
         if ((open['Pair'] ?? '').trim() !== pair) return false
         return new Date(open['Time(UTC+8)']).getTime() <= closeTime
       })
+      const match = candidates[candidates.length - 1]
       if (!match) continue
       usedOpens.add(match.idx)
 
+      // realized PnL = gross PnL (Realized PNL col) + close fee + open fee (fees are negative)
       const pnl =
         parseFloat(close['Realized PNL'] || '0') +
         parseFloat(close['Fee'] || '0') +
@@ -67,7 +69,7 @@ export async function POST(request: Request) {
 
       rows.push({
         account_id: accId,
-        external_id: `bingx-csv-${close['Order No.']}`,
+        external_id: `xlsx-${close['Order No.']}`,
         symbol: pair.replace('-', '/'),
         direction,
         entry_price: parseFloat(match.row['AvgPrice'] || match.row['DealPrice'] || '0') || null,
@@ -75,7 +77,7 @@ export async function POST(request: Request) {
         entry_time: new Date(match.row['Time(UTC+8)']).toISOString(),
         exit_time: new Date(close['Time(UTC+8)']).toISOString(),
         quantity: parseFloat(close['Quantity'] || '0') || null,
-        pnl: Math.round(pnl * 10) / 10,
+        pnl: pnl,
       })
     }
   }
@@ -95,10 +97,12 @@ export async function POST(request: Request) {
     return Response.json({ message: '找不到配對的交易（Open/Close 需在同一檔案中）' }, { status: 400 })
   }
 
-  const { data: inserted, error } = await sb
+  // ignoreDuplicates: false → update existing records (corrects wrong pnl values)
+  // Only data fields are in rows — notes/strategy/rr are preserved automatically
+  const { data: upserted, error } = await sb
     .from('trades')
-    .upsert(rows, { onConflict: 'external_id', ignoreDuplicates: true })
+    .upsert(rows, { onConflict: 'external_id', ignoreDuplicates: false })
     .select()
   if (error) return Response.json({ message: `寫入失敗: ${error.message}` }, { status: 500 })
-  return Response.json({ message: `匯入完成，新增 ${inserted?.length ?? 0} 筆` })
+  return Response.json({ message: `匯入完成，處理 ${upserted?.length ?? 0} 筆` })
 }

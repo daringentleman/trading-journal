@@ -30,6 +30,7 @@ export default function Dashboard() {
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr)
+  const [loading, setLoading] = useState(true)
 
   const current = accounts.find(a => a.name === account)
   const riskAmount = current ? (current.initial_capital * current.risk_percent) / 100 : 0
@@ -53,9 +54,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     supabase.from('accounts').select('*').then(({ data }) => {
+      setLoading(false)
       if (!data) return
       setAccounts(data as Account[])
-      // Load total PnL for each account for the overview cards
       data.forEach((acc: Account) => {
         supabase.from('trades').select('pnl').eq('account_id', acc.id)
           .then(({ data: td }) => {
@@ -113,9 +114,17 @@ export default function Dashboard() {
       </div>
 
       {/* Account equity overview */}
-      {accounts.length > 0 && (
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          {ACCOUNT_ORDER.map(name => accounts.find(a => a.name === name)).filter((a): a is Account => !!a).map(acc => {
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        {loading ? (
+          // Loading skeleton
+          [0, 1].map(i => (
+            <div key={i} className="rounded-[10px] p-3 border animate-pulse" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+              <div className="h-2.5 w-16 rounded mb-2" style={{ background: 'var(--raised)' }} />
+              <div className="h-5 w-24 rounded" style={{ background: 'var(--raised)' }} />
+            </div>
+          ))
+        ) : (
+          ACCOUNT_ORDER.map(name => accounts.find(a => a.name === name)).filter((a): a is Account => !!a).map(acc => {
             const pnl = allPnl[acc.name] ?? 0
             const equity = acc.initial_capital + pnl
             const label = ACCOUNT_LABEL[acc.name] ?? acc.name
@@ -127,9 +136,9 @@ export default function Dashboard() {
                 </div>
               </div>
             )
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
 
       {/* Account tabs */}
       <div className="flex gap-1.5 p-1 rounded-lg mb-3 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
@@ -158,13 +167,24 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Desktop: risk card + equity chart side by side */}
-      <div className="md:grid md:grid-cols-[300px_1fr] md:gap-4 md:items-start md:mb-4">
+      {/* Desktop: risk card + equity chart side by side, equal height */}
+      <div className="md:grid md:grid-cols-2 md:gap-4 md:mb-4">
         {/* Risk card */}
-        {current && (
-          <div className="rounded-[10px] p-4 mb-3 md:mb-0 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-            <div className="text-[10px] uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>風險管理</div>
+        {loading ? (
+          <div className="rounded-[10px] p-4 mb-3 md:mb-0 border animate-pulse" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+            <div className="h-2 w-12 rounded mb-3" style={{ background: 'var(--raised)' }} />
             <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg p-3 border h-28" style={{ background: 'var(--raised)', borderColor: 'var(--border)' }} />
+              <div className="grid grid-rows-2 gap-2">
+                <div className="rounded-lg border h-[52px]" style={{ background: 'var(--raised)', borderColor: 'var(--border)' }} />
+                <div className="rounded-lg border h-[52px]" style={{ background: 'var(--raised)', borderColor: 'var(--border)' }} />
+              </div>
+            </div>
+          </div>
+        ) : current ? (
+          <div className="rounded-[10px] p-4 mb-3 md:mb-0 border flex flex-col" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+            <div className="text-[10px] uppercase tracking-widest mb-3" style={{ color: 'var(--muted)' }}>風險管理</div>
+            <div className="grid grid-cols-2 gap-2 flex-1">
               <div className="rounded-lg p-3 border" style={{ background: 'var(--raised)', borderColor: 'var(--border)' }}>
                 <div className="text-[10px] uppercase tracking-wide mb-2" style={{ color: 'var(--muted)' }}>
                   {ACCOUNT_LABEL[account]}
@@ -197,7 +217,7 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* Equity chart */}
         <div className="rounded-[10px] p-4 mb-3 md:mb-0 border" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
