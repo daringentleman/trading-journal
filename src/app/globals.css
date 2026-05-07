@@ -131,9 +131,9 @@ body > div.flex { position: relative; z-index: 1; }
 .retro-pill {
   border: 1.5px solid var(--border);
   background: var(--surface);
-  color: var(--border);
+  color: #000;
   border-radius: 999px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.04em;
 }
 .retro-pill[data-active='true'] {
@@ -156,6 +156,29 @@ body > div.flex { position: relative; z-index: 1; }
   letter-spacing: 0.04em;
 }
 .retro-cta:hover { background: #f0d350; }
+
+/* Date picker day cell */
+.retro-day-cell {
+  background: transparent;
+  border: 1.5px solid transparent;
+  color: #000;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 80ms;
+}
+.retro-day-cell:hover { background: var(--raised); }
+.retro-day-cell[data-out] { color: var(--muted2); }
+.retro-day-cell[data-today] { background: var(--raised); }
+.retro-day-cell[data-selected] {
+  background: var(--accent);
+  border-color: var(--border);
+  box-shadow: 1.5px 1.5px 0 var(--border);
+}
+.retro-day-cell[data-disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.retro-day-cell[data-disabled]:hover { background: transparent; }
 
 /* ============================================================
    Unified font-size scale (use directly via class)

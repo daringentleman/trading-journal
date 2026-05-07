@@ -8,6 +8,7 @@ import { tradeCache } from '@/lib/trade-cache'
 import EquityChart from '@/components/EquityChart'
 import StrategyCard from '@/components/StrategyCard'
 import StrategyEquityChart from '@/components/StrategyEquityChart'
+import RetroDatePicker from '@/components/RetroDatePicker'
 import {
   RANGE_OPTIONS, SORT_OPTIONS, rangeBoundsMs,
   computeStrategyMetric, sortMetrics,
@@ -232,15 +233,9 @@ export default function StatsPage() {
           {stratRange === 'custom' && (
             <div className="flex items-center gap-2 flex-wrap fs-meta font-bold">
               <span style={{ color: 'var(--muted)' }}>從</span>
-              <input type="date" value={customFrom} max={customTo}
-                onChange={e => setCustomFrom(e.target.value)}
-                className="px-2 py-1 outline-none cursor-pointer"
-                style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--border)', borderRadius: 4 }} />
+              <RetroDatePicker value={customFrom} max={customTo} onChange={setCustomFrom} />
               <span style={{ color: 'var(--muted)' }}>到</span>
-              <input type="date" value={customTo} min={customFrom} max={todayISO(0)}
-                onChange={e => setCustomTo(e.target.value)}
-                className="px-2 py-1 outline-none cursor-pointer"
-                style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--border)', borderRadius: 4 }} />
+              <RetroDatePicker value={customTo} min={customFrom} max={todayISO(0)} onChange={setCustomTo} />
             </div>
           )}
         </div>

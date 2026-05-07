@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react'
 import type { Trade } from '@/lib/types'
+import RetroDatePicker from './RetroDatePicker'
 
 interface Props {
   trades: Trade[]
@@ -180,13 +181,12 @@ export default function EquityChart({ trades, initialCapital }: Props) {
     const linePath = smoothPath(xy)
 
     const lastEquity = points[n - 1].equity
-    const isUp = lastEquity >= initialCapital
-    const color = isUp ? 'var(--profit)' : 'var(--loss)'
+    const color = lastEquity >= initialCapital ? 'var(--profit)' : 'var(--loss)'
 
     const hx = hoverIdx !== null ? toX(hoverIdx) : 0
     const hy = hoverIdx !== null ? toY(points[hoverIdx].equity) : 0
 
-    return { toX, toY, yTicks, xIndices, linePath, lastEquity, isUp, color, hx, hy, n }
+    return { toX, toY, yTicks, xIndices, linePath, color, hx, hy, n }
   })()
 
   function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
@@ -225,15 +225,11 @@ export default function EquityChart({ trades, initialCapital }: Props) {
       {range === 'custom' && (
         <div className="flex items-center gap-2 flex-wrap fs-meta font-bold mb-3">
           <span style={{ color: 'var(--muted)' }}>從</span>
-          <input type="date" value={customFrom} max={customTo}
-            onChange={e => { setCustomFrom(e.target.value); setHoverIdx(null) }}
-            className="px-2 py-1 outline-none cursor-pointer"
-            style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--border)', borderRadius: 4 }} />
+          <RetroDatePicker value={customFrom} max={customTo}
+            onChange={v => { setCustomFrom(v); setHoverIdx(null) }} />
           <span style={{ color: 'var(--muted)' }}>到</span>
-          <input type="date" value={customTo} min={customFrom} max={todayISO(0)}
-            onChange={e => { setCustomTo(e.target.value); setHoverIdx(null) }}
-            className="px-2 py-1 outline-none cursor-pointer"
-            style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', color: 'var(--border)', borderRadius: 4 }} />
+          <RetroDatePicker value={customTo} min={customFrom} max={todayISO(0)}
+            onChange={v => { setCustomTo(v); setHoverIdx(null) }} />
         </div>
       )}
 
@@ -290,24 +286,6 @@ export default function EquityChart({ trades, initialCapital }: Props) {
               </>
             )}
 
-            {/* End dot + label when not hovering */}
-            {hoverIdx === null && (() => {
-              const { toX, toY, lastEquity, color, n } = chartContent
-              const ex = toX(n - 1)
-              const ey = toY(lastEquity)
-              const above = ey < PT + CH / 2
-              return (
-                <>
-                  <circle cx={ex} cy={ey} r="3" fill={color} />
-                  <rect x={ex - 52} y={above ? ey + 4 : ey - 12} width={50} height={10} rx="2"
-                    fill="var(--surface)" fillOpacity="0.9" />
-                  <text x={ex - 2} y={above ? ey + 11 : ey - 4}
-                    textAnchor="end" fontSize="7" fill={color}>
-                    {fmtAxis(lastEquity)}
-                  </text>
-                </>
-              )
-            })()}
           </svg>
 
           {/* HTML tooltip */}
